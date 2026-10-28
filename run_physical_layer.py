@@ -335,6 +335,119 @@ def adaptive_study(
     return rows
 
 
+def phase_resolution_study(
+    config: SimulationConfig,
+    position: np.ndarray,
+    bits: tuple = (1, 2, 3, 4),
+) -> list[dict]:
+    """
+    SNDR vs RIS phase resolution: ideal, naive control, hardware-aware control.
+
+    Shows how much coupling-aware selection recovers as more realisable
+    states become available.
+    """
+
+    ideal_db = link_metrics(position, config.ideal())["sndr_db"]
+    rows = []
+
+    for b in bits:
+        quantized = replace(config, ris_phase_bits=b)
+        bs_to_ris, ris_to_uav = ris_element_channels(position, quantized)
+        aware = hardware_aware_phases(bs_to_ris * ris_to_uav, quantized)
+        naive_db = link_metrics(position, quantized)["sndr_db"]
+        aware_db = link_metrics(position, quantized, aware)["sndr_db"]
+        rows.append({
+            "bits": b,
+            "ideal_sndr_db": round(ideal_db, 2),
+            "naive_sndr_db": round(naive_db, 2),
+            "hardware_aware_sndr_db": round(aware_db, 2),
+            "aware_gain_db": round(aware_db - naive_db, 2),
+        })
+
+    return rows
+
+
+def carrier_study(
+    config: SimulationConfig,
+    aperture_m: float = 0.08,
+) -> list[dict]:
+    """
+    60 vs 140 GHz at equal RIS aperture, full impairments and ITU absorption.
+
+    Equal aperture means more elements at the higher carrier (lambda/2
+    spacing), which offsets the larger per-element path loss.
+    """
+
+    from atmosphere import specific_gaseous_attenuation_db_per_km
+
+    positions = straight_line_trajectory(config).positions_m[::TRAJECTORY_STRIDE * 5]
+    rows = []
+
+    # D-band hardware is weaker: about 20 dBm PA saturation (InP, IMS 2020)
+    # -> 14 dBm average at 6 dB back-off, and LNA noise figures near 10 dB.
+    cases = (
+        ("60 GHz", 60e9, {}),
+        ("140 GHz, 60 GHz-class hardware", 140e9, {}),
+        ("140 GHz, D-band hardware", 140e9, {"transmit_power_w": 10 ** (14 / 10) / 1e3, "noise_figure_db": 10.0}),
+    )
+
+    for label, frequency, hardware in cases:
+        side = int(round(aperture_m / (299_792_458.0 / frequency / 2.0)))
+        carrier = replace(config, carrier_frequency_hz=frequency, ris_rows=side, ris_columns=side, **hardware)
+
+        ideal, aware = [], []
+        for position in positions:
+            ideal.append(link_metrics(position, carrier.ideal())["sndr_db"])
+            bs_to_ris, ris_to_uav = ris_element_channels(position, carrier)
+            aware.append(link_metrics(
+                position, carrier, hardware_aware_phases(bs_to_ris * ris_to_uav, carrier)
+            )["sndr_db"])
+
+        rows.append({
+            "case": label,
+            "ris": f"{side}x{side}",
+            "gaseous_absorption_db_per_km": round(specific_gaseous_attenuation_db_per_km(
+                frequency, config.atmospheric_pressure_hpa, config.atmospheric_temperature_k,
+                config.water_vapour_density_g_m3), 3),
+            "ideal_sndr_db_at_start": round(ideal[0], 2),
+            "hardware_aware_sndr_db_at_start": round(aware[0], 2),
+            "ideal_availability_pct": round(float(100.0 * np.mean(np.array(ideal) >= 0.0)), 1),
+            "hardware_aware_availability_pct": round(float(100.0 * np.mean(np.array(aware) >= 0.0)), 1),
+        })
+
+    return rows
+
+
+def coupling_sensitivity(
+    config: SimulationConfig,
+    position: np.ndarray,
+    beta_mins: tuple = (0.2, 0.4, 0.6, 0.8, 1.0),
+) -> list[dict]:
+    """
+    Impairment penalty and aware-control gain vs coupling strength.
+
+    beta_min = 1 means no coupling. No measured 60 GHz value exists, so
+    the conclusions must hold across this range rather than at one point.
+    """
+
+    ideal_db = link_metrics(position, config.ideal())["sndr_db"]
+    rows = []
+
+    for beta_min in beta_mins:
+        coupled = replace(config, ris_coupling_beta_min=beta_min)
+        bs_to_ris, ris_to_uav = ris_element_channels(position, coupled)
+        aware_db = link_metrics(position, coupled, hardware_aware_phases(bs_to_ris * ris_to_uav, coupled))["sndr_db"]
+        naive_db = link_metrics(position, coupled)["sndr_db"]
+        rows.append({
+            "beta_min": beta_min,
+            "total_penalty_naive_db": round(ideal_db - naive_db, 2),
+            "total_penalty_aware_db": round(ideal_db - aware_db, 2),
+            "aware_gain_db": round(aware_db - naive_db, 2),
+        })
+
+    return rows
+
+
 def main() -> None:
     """Run every experiment and write one JSON file."""
 
@@ -359,6 +472,14 @@ def main() -> None:
         "closed_loop_estimate_then_control": closed_loop_study(config),
         "parametric_estimation": parametric_study(config),
         "adaptive_parametric_estimation": adaptive_study(config),
+        "phase_resolution": phase_resolution_study(config, reference),
+        "coupling_sensitivity": coupling_sensitivity(config, reference),
+        "carrier_comparison_equal_aperture": carrier_study(config),
+        "ris_sizing_140ghz_dband_hardware": ris_sizing(
+            replace(config, carrier_frequency_hz=140e9,
+                    transmit_power_w=10 ** (14 / 10) / 1e3, noise_figure_db=10.0),
+            sides=(75, 150, 225, 300),
+        ),
     }
 
     RESULTS_DIR.mkdir(exist_ok=True)

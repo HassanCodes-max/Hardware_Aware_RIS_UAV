@@ -26,7 +26,8 @@ SALEH_ALPHA_PHI = 4.0033
 SALEH_BETA_PHI = 9.1040
 
 # Practical RIS phase-shift model (Abeywickrama et al., IEEE TCOM 2020).
-COUPLING_BETA_MIN = 0.2
+# beta_min is per-config (SimulationConfig.ris_coupling_beta_min) because no
+# measured 60 GHz value is available; run_physical_layer sweeps it.
 COUPLING_PHI = 0.43 * np.pi
 COUPLING_KAPPA = 1.6
 
@@ -113,13 +114,14 @@ def quantize_phases(
 
 def coupled_amplitude(
     phases_rad: np.ndarray,
+    beta_min: float = 0.2,
 ) -> np.ndarray:
     """Return the phase-dependent reflection amplitude of a practical element."""
 
     return (
-        (1.0 - COUPLING_BETA_MIN)
+        (1.0 - beta_min)
         * ((np.sin(phases_rad - COUPLING_PHI) + 1.0) / 2.0) ** COUPLING_KAPPA
-        + COUPLING_BETA_MIN
+        + beta_min
     )
 
 
@@ -144,7 +146,7 @@ def hardware_aware_phases(
 
     gamma = np.exp(1j * levels)
     if config.use_ris_amplitude_phase_coupling:
-        gamma = gamma * coupled_amplitude(levels)
+        gamma = gamma * coupled_amplitude(levels, config.ris_coupling_beta_min)
 
     psi = np.linspace(0.0, 2.0 * np.pi, reference_phases, endpoint=False)
 
@@ -191,6 +193,6 @@ def ris_reflection_coefficients(
     amplitude = np.sqrt(config.ris_reflection_efficiency) * np.ones_like(phases)
 
     if config.use_ris_amplitude_phase_coupling:
-        amplitude = amplitude * coupled_amplitude(phases)
+        amplitude = amplitude * coupled_amplitude(phases, config.ris_coupling_beta_min)
 
     return amplitude * np.exp(1j * phases)

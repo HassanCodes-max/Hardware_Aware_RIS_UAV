@@ -67,6 +67,8 @@ class SimulationConfig:
     use_ris_phase_noise: bool = True
     ris_phase_noise_std_deg: float = 5.0
     use_ris_amplitude_phase_coupling: bool = True
+    # Minimum reflection amplitude of the coupled element (1.0 = no coupling).
+    ris_coupling_beta_min: float = 0.2
     use_s11_mismatch: bool = True
     s11_db: float = -10.0
     impairment_seed: int = 7
