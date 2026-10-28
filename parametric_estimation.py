@@ -156,3 +156,73 @@ def refine_position(
     _, _, refined = best_direction(u, v, 2.0 * coarse_step, fine_step)
 
     return refined
+
+
+# Matched-filter pilot SNR (M * L * SNR_coherent / N) needed for the
+# direction search to pick the true peak among ~1e3 candidates. Over 10
+# trials per range, 32 and 64 still gave rare sidelobe locks (worst 46 and
+# 24 dB loss at 50 m); 128 kept the worst case under 0.3 dB.
+REQUIRED_PILOT_SNR = 128.0
+PILOT_PATTERNS = 64
+
+
+def adaptive_pilot_plan(
+    prior_m: np.ndarray,
+    prior_std_m: float,
+    config: SimulationConfig,
+) -> dict:
+    """
+    Choose the search width and pilot budget from the prior alone.
+
+    The coherent SNR at the prior position is predicted from the known
+    BS/RIS geometry and hardware model. If the prior's angular uncertainty
+    is already well inside the beam, no pilots are sent.
+    """
+
+    from channel import link_metrics
+
+    offset_m = np.asarray(prior_m, dtype=float) - np.asarray(config.ris_position_m, dtype=float)
+    angular_std = prior_std_m / np.linalg.norm(offset_m)
+    beam_width = 2.0 / max(config.ris_rows, config.ris_columns)
+
+    if 3.0 * angular_std < beam_width / 8.0:
+        return {"patterns": 0, "symbols_per_pattern": 0, "search_half_width": 0.0}
+
+    predicted_snr = 10.0 ** (link_metrics(prior_m, config.ideal())["snr_db"] / 10.0)
+    symbols = REQUIRED_PILOT_SNR * config.ris_elements / (PILOT_PATTERNS * max(predicted_snr, 1e-6))
+    symbols = int(2 ** np.ceil(np.log2(max(symbols, 1.0))))
+
+    return {
+        "patterns": PILOT_PATTERNS,
+        "symbols_per_pattern": symbols,
+        "search_half_width": float(np.clip(3.0 * angular_std, 0.02, 0.5)),
+    }
+
+
+def estimate_from_prior(
+    true_position_m: np.ndarray,
+    prior_m: np.ndarray,
+    prior_std_m: float,
+    config: SimulationConfig,
+    rng: np.random.Generator,
+) -> tuple[np.ndarray, int]:
+    """Run the adaptive plan; return (position estimate, pilot symbols used)."""
+
+    plan = adaptive_pilot_plan(prior_m, prior_std_m, config)
+    if plan["patterns"] == 0:
+        return np.asarray(prior_m, dtype=float), 0
+
+    received, nominal = send_pilots(
+        true_position_m,
+        random_training(plan["patterns"], config, rng),
+        config,
+        plan["symbols_per_pattern"],
+        rng,
+    )
+    estimate = refine_position(
+        prior_m, received, nominal, config,
+        search_half_width=plan["search_half_width"],
+        coarse_step=min(0.02, plan["search_half_width"] / 4.0),
+    )
+
+    return estimate, plan["patterns"] * plan["symbols_per_pattern"]

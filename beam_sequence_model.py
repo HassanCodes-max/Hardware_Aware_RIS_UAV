@@ -230,7 +230,8 @@ def main() -> None:
         ],
     }, indent=2))
 
-    columns = ["top1_acc", "top3_acc", "within_1_beam_acc", "power_ratio", "power_loss_db", "macro_f1"]
+    columns = ["top1_acc", "within_noise_acc", "balanced_within_noise_acc", "top3_acc",
+               "within_1_beam_acc", "power_ratio", "macro_f1"]
     print()
     print(summary[columns].round(3).to_string())
 

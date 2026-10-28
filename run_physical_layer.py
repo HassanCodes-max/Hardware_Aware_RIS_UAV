@@ -13,7 +13,13 @@ import numpy as np
 from channel import estimate_cascaded_channel, link_metrics, ris_element_channels
 from config import SimulationConfig
 from hardware import hardware_aware_phases
-from parametric_estimation import cascaded_channel, random_training, refine_position, send_pilots
+from parametric_estimation import (
+    cascaded_channel,
+    estimate_from_prior,
+    random_training,
+    refine_position,
+    send_pilots,
+)
 from trajectory import straight_line_trajectory
 
 RESULTS_DIR = Path(__file__).resolve().parent / "results"
@@ -283,6 +289,52 @@ def parametric_study(
     return rows
 
 
+def adaptive_study(
+    config: SimulationConfig,
+    distances_m: tuple = (20.0, 50.0, 100.0, 200.0),
+    priors: tuple = (("gps_5m", 5.0), ("kalman_500ms", 0.31), ("kalman_100ms", 0.05)),
+    trials: int = 10,
+) -> list[dict]:
+    """
+    Adaptive parametric estimation: the pilot budget and search width are
+    set from the prior and the predicted SNR. Prior std values come from
+    GPS and from the Kalman RMSE in tracking_eval.py at 500 / 100 ms.
+    Reports the delivered fraction of perfect-CSI SNR.
+    """
+
+    rows = []
+    for distance in distances_m:
+        position = np.array([distance, 0.0, 30.0])
+        perfect = link_metrics(
+            position, config, hardware_aware_phases(cascaded_channel(position, config), config)
+        )["sndr_linear"]
+
+        for name, std in priors:
+            ratios, pilots = [], []
+            for trial in range(trials):
+                rng = np.random.default_rng(500 + trial)
+                prior = position + rng.normal(0.0, std, 3)
+                estimate, used = estimate_from_prior(position, prior, std, config, rng)
+                achieved = link_metrics(
+                    position, config, hardware_aware_phases(cascaded_channel(estimate, config), config)
+                )["sndr_linear"]
+                ratios.append(achieved / perfect)
+                pilots.append(used)
+
+            rows.append({
+                "x_m": distance,
+                "prior": name,
+                "mean_pct_of_perfect_csi_snr": round(100.0 * float(np.mean(ratios)), 2),
+                "worst_pct_of_perfect_csi_snr": round(100.0 * float(np.min(ratios)), 2),
+                "mean_pilot_symbols": int(np.mean(pilots)),
+                "pilot_saving_vs_lmmse_x": round(
+                    config.ris_elements * 4096 / max(float(np.mean(pilots)), 1.0), 1
+                ),
+            })
+
+    return rows
+
+
 def main() -> None:
     """Run every experiment and write one JSON file."""
 
@@ -306,6 +358,7 @@ def main() -> None:
         "channel_estimation": estimation_study(config),
         "closed_loop_estimate_then_control": closed_loop_study(config),
         "parametric_estimation": parametric_study(config),
+        "adaptive_parametric_estimation": adaptive_study(config),
     }
 
     RESULTS_DIR.mkdir(exist_ok=True)
