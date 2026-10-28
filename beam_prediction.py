@@ -34,6 +34,8 @@ from sklearn.ensemble import ExtraTreesClassifier, RandomForestClassifier
 from sklearn.metrics import accuracy_score, f1_score
 from sklearn.model_selection import GroupKFold, train_test_split
 
+from public_data_adapter import load_scenario23_kinematics
+
 PROJECT_ROOT = Path(__file__).resolve().parent
 DATA_DIR = PROJECT_ROOT / "public_data" / "scenario23_dev"
 RESULTS_DIR = PROJECT_ROOT / "results"
@@ -45,8 +47,12 @@ FOLDS = 5
 SEED = 42
 
 
-def load_scenario23() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Return power sweeps (N, 64), 0-based labels, sequence ids and times (s)."""
+def load_scenario23() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray | None]:
+    """
+    Return power sweeps (N, 64), 0-based labels, sequence ids, times (s)
+    and UAV kinematics (N, F), which is None unless the full Scenario 23
+    download (with unit2/) is present.
+    """
 
     beams = pd.read_csv(DATA_DIR / "scenario23_beam_dataset.csv")
     manifest = pd.read_csv(DATA_DIR / "scenario23.csv")
@@ -60,7 +66,11 @@ def load_scenario23() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     clock = manifest["time_stamp[UTC]"].str.extract(r"(\d+)-(\d+)-(\d+)-(\d+)").astype(float)
     time_s = clock[0] * 3600 + clock[1] * 60 + clock[2] + clock[3] / 1000.0
 
-    return power, labels, manifest["seq_index"].to_numpy(int), time_s.to_numpy()
+    kinematics = load_scenario23_kinematics(DATA_DIR, manifest)
+    if kinematics is not None:
+        kinematics = kinematics.to_numpy(float)
+
+    return power, labels, manifest["seq_index"].to_numpy(int), time_s.to_numpy(), kinematics
 
 
 def build_samples(
@@ -69,12 +79,14 @@ def build_samples(
     sequences: np.ndarray,
     time_s: np.ndarray,
     horizon: int,
+    kinematics: np.ndarray | None = None,
 ) -> dict[str, np.ndarray]:
     """
     Build (features at t, target at t + horizon) pairs inside each sequence.
 
     Features: the last HISTORY sweeps in dB relative to their own peak,
-    the beam index history and its first difference, and the sampling gaps.
+    the beam index history and its first difference, the sampling gaps,
+    and (when available) the UAV kinematics over the same history.
     """
 
     relative_db = 10.0 * np.log10(power / power.max(axis=1, keepdims=True))
@@ -95,6 +107,7 @@ def build_samples(
         + [np.stack([labels[past[k]] - labels[past[k + 1]] for k in range(HISTORY - 1)], axis=1)]
         + [np.stack([time_s[past[k]] - time_s[past[k + 1]] for k in range(HISTORY - 1)], axis=1)]
         + [(time_s[rows + horizon] - time_s[rows])[:, None]]
+        + ([kinematics[p] for p in past] if kinematics is not None else [])
     )
 
     return {
@@ -237,9 +250,10 @@ def legacy_checks(
 def main() -> None:
     """Run every horizon and write the summary tables."""
 
-    power, labels, sequences, time_s = load_scenario23()
+    power, labels, sequences, time_s, kinematics = load_scenario23()
 
-    print(f"Samples: {len(labels)}, sequences: {len(np.unique(sequences))}")
+    print(f"Samples: {len(labels)}, sequences: {len(np.unique(sequences))}, "
+          f"UAV kinematics: {'yes' if kinematics is not None else 'no (unit2/ not downloaded)'}")
 
     legacy = legacy_checks(power, labels)
     for key, value in legacy.items():
@@ -247,7 +261,7 @@ def main() -> None:
 
     all_rows = []
     for horizon in HORIZONS:
-        samples = build_samples(power, labels, sequences, time_s, horizon)
+        samples = build_samples(power, labels, sequences, time_s, horizon, kinematics)
         print(f"\nHorizon t+{horizon}: {len(samples['target'])} samples")
 
         for row in evaluate_horizon(samples):
@@ -262,6 +276,7 @@ def main() -> None:
     (RESULTS_DIR / "beam_prediction_metrics.json").write_text(json.dumps({
         "split": f"GroupKFold({FOLDS}) over seq_index",
         "history_sweeps": HISTORY,
+        "uses_uav_kinematics": kinematics is not None,
         "legacy_checks": legacy,
         "summary": [
             {"horizon": h, "model": m, **values}

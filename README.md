@@ -31,6 +31,7 @@ python -m pytest tests          # 7 regression tests, < 1 s
 |---|---|---|---|
 | `run_physical_layer.py` | Link budget, ideal vs naive vs hardware-aware, impairment ablation, RIS scaling (60/140 GHz), RIS sizing, channel-estimation NMSE | `physical_layer_metrics.json` | ~25 s |
 | `beam_prediction.py` | Next-beam prediction on Scenario 23, cross-validated over flight sequences | `beam_prediction_metrics.{json,csv}`, `beam_prediction_folds.csv` | ~3 min |
+| `beam_sequence_model.py` | GRU over 8 sweeps (hard label vs soft power target), same protocol and metrics | `beam_sequence_metrics.{json,csv}` | ~15 min (CPU) |
 | `tracking_eval.py` | Position predictors (persistence, CV, Kalman, learned) scored by delivered array gain at 10/100/500 ms horizons | `tracking_metrics.{json,csv}` | ~1 min |
 | `main.py` | Per-time-step trace along the default flight | `simulation.csv` | ~4 s |
 | `phase_tracking.py`, `dataset_generator.py`, `hybrid_dataset_generator.py` | Synthetic phase datasets | `*.csv` | minutes |
@@ -54,26 +55,50 @@ python -m pytest tests          # 7 regression tests, < 1 s
 
 ## Current results (2026-10-29)
 
-**Beam prediction** (Scenario 23, GroupKFold over 35 sequences, Random Forest + sweep prior)
+**Beam prediction** (Scenario 23, GroupKFold over 35 sequences, power sweeps only, no GPS yet)
 
-| Horizon | Top-1 | Top-3 | ±1 beam | Power ratio | Power loss |
-|---|---|---|---|---|---|
-| t+1 (~140 ms) | 70.4% | 94.9% | 89.6% | 98.6% | 0.06 dB |
-| t+3 | 53.9% | 84.2% | 75.3% | 94.4% | 0.25 dB |
+| Horizon | Model | Top-1 | Top-3 | ±1 beam | Power ratio | Power loss |
+|---|---|---|---|---|---|---|
+| t+1 (~140 ms) | Persistence | 69.2% | 94.5% | 91.4% | 98.6% | 0.06 dB |
+| | RF + sweep prior | 70.4% | 94.9% | 89.6% | 98.6% | 0.06 dB |
+| | **GRU, soft target** | **70.9%** | **95.1%** | **91.5%** | **98.9%** | **0.05 dB** |
+| t+3 | Persistence | 53.3% | 80.3% | 76.7% | 93.7% | 0.28 dB |
+| | RF + sweep prior | 53.9% | 84.2% | 75.3% | 94.4% | 0.25 dB |
+| | GRU, hard label | 49.5% | 80.6% | 70.2% | 93.1% | 0.31 dB |
+| | **GRU, soft target** | **55.3%** | **84.8%** | **78.1%** | **95.5%** | **0.20 dB** |
 
-Persistence ("keep the last beam") scores 69.0% / 94.4% / 98.6% at t+1, so
-the learned models add only a little so far. Top-1 is capped by
+The GRU is trained against softmax(measured dB / 0.5 dB) of the future
+sweep instead of the argmax label, because near-tied beams make the hard
+label mostly noise. With hard labels the GRU loses to persistence at t+3,
+as the first draft's GRU did. With the soft target it is the best model.
+The GRU uses an 8-sweep window and the trees a 3-sweep window, so their
+sample sets differ slightly at sequence edges. Top-1 stays capped by
 near-tied beams (see AUDIT.md).
 
 **Predictive RIS tracking** (32×32 RIS, 2 cm position noise, held-out trajectory types)
 
 | Horizon | Persistence | Constant velocity | Kalman CV | Learned (Ridge) |
 |---|---|---|---|---|
-| 10 ms | 99.8% | 99.8% | **99.9%** | 99.9% |
-| 100 ms | 91.3% | 94.3% | **99.8%** | 99.8% |
-| 500 ms | 58.0% | 64.0% | **98.3%** | 96.9% |
+| 10 ms | 99.9% | 99.9% | **100.0%** | 100.0% |
+| 100 ms | 94.0% | 97.2% | **99.98%** | 99.9% |
+| 500 ms | 63.0% | 71.4% | **99.3%** | 98.8% |
 
-The values are the mean fraction of the ideal array gain delivered.
+The values are the mean fraction of the ideal array gain delivered, with
+all 9 trajectories fully in front of the RIS.
+
+**Closed loop: estimate, then control** (SNDR in dB, hardware-aware vs naive pipeline)
+
+| UAV at | Pilots per pattern | Perfect CSI | Naive (LS + −∠ĝ) | Hardware-aware (LMMSE + aware phases) |
+|---|---|---|---|---|
+| 20 m | 1024 | 7.47 | 6.77 | **7.19** |
+| 50 m | 4096 | 1.50 | 0.57 | **1.07** |
+| 100 m | 4096 | −4.75 | −7.27 | **−6.33** |
+
+The hardware-aware pipeline wins at every distance and pilot length, by
+0.4–1.2 dB. Per-element estimation gets expensive with range, while
+position-based tracking keeps more than 99% of the gain with no pilots.
+This argues for setting phases from tracking and using pilots only to
+refine them.
 
 **Physical layer** (60 GHz, 32×32 RIS, 20 dBm, 25/10 dBi, UAV at 50 m)
 
@@ -124,35 +149,51 @@ The values are the mean fraction of the ideal array gain delivered.
   - `requirements.txt` completed;
   - `.gitignore` and regression tests added.
 
+### 2026-10-29: Major update 2 (sequence model, closed loop, GPS-ready)
+
+- PyTorch (CPU) installed. New `beam_sequence_model.py`: a GRU with a
+  residual over the last sweep and a soft power-based target. It is the
+  best model at both horizons, most clearly at t+3.
+- `public_data_adapter.load_scenario23_kinematics` reads UAV GPS,
+  altitude, speeds, pitch and roll from `unit2/`. It converts them to
+  BS-relative position, bearing and elevation. Both beam scripts use
+  these features automatically once the full dataset is present. A test
+  uses a fake `unit2/` folder.
+- Designed trajectories moved in front of the facade-mounted RIS, so
+  they are now 100% served. Tracking was re-run.
+- Closed loop added to `run_physical_layer.py`: estimate the channel,
+  set phases from the estimate, then measure SNDR.
+- Tried the full Scenario 23 download: deepsense6g.net now requires an
+  account sign-in, and no public mirror exists. This step needs a person
+  (see below).
+
 ## Next steps (what we have to do)
 
 Ordered by impact. Check items off here as they're done.
 
-1. [ ] **Download the full Scenario 23 dev set** from deepsense6g.net (all
-   images, `mmWave_data/`, `unit2/` GPS/altitude/speed). This unblocks
-   position-aided and image-aided beam prediction and rebuilding the CSV
-   with `build_scenario23_dataset.py`.
-2. [ ] **Position + power beam prediction**: add UAV GPS, altitude and
-   velocity features to `beam_prediction.py`. Goal: beat persistence
-   clearly at t+3 and beyond (top-3 ≥ 90%).
-3. [ ] **Sequence model** (needs `pip install torch`): GRU/TCN over sweeps
-   + GPS, with the same GroupKFold protocol. Report it against RF and
-   persistence, not instead of them.
+1. [ ] **Download the full Scenario 23 dev set (manual: needs sign-in).**
+   Create a free account at deepsense6g.net → Scenarios → Scenario 23 →
+   download the dev set. Unzip it so `unit1/` and `unit2/` sit inside
+   `public_data/scenario23_dev/`, merging with what is already there.
+   Then run `python beam_prediction.py` and `python beam_sequence_model.py`;
+   both pick up the GPS features automatically.
+2. [x] Position + power features wired in (`load_scenario23_kinematics`).
+   Waiting on step 1. Goal: top-3 ≥ 90% at t+3.
+3. [x] Sequence model: GRU with soft target (`beam_sequence_model.py`).
+   Next, try a TCN or Transformer once GPS is available.
 4. [ ] **Rewrite the paper** per AUDIT.md:
    - Table II: new task, split and metrics.
    - Sec. IV/VI-E: the array-gain metric; the conclusion is reversed.
    - Sec. VI-B: new link budget and the impairment ablation.
    - Sec. VI-D: the 140 GHz numbers are resolved.
    - Fix the "sub-THz" wording at 60 GHz and references [2] and [7].
-5. [ ] **Closed loop**: estimate the channel with hardware-aware LMMSE,
-   set phases from the estimate, and score the resulting SNDR. This
-   connects estimation to tracking, as the paper title promises.
+5. [x] Closed loop: estimate, then control, then measure SNDR
+   (`closed_loop_study`). Next, a parametric (angle-based) estimator,
+   which should close most of the gap to perfect CSI at 100 m.
 6. [ ] **Hardware parameters**: replace the textbook Saleh and coupling
    coefficients with values from a D-band PA / 60 GHz RIS datasheet or
    paper, and run the sweep at 140 GHz.
-7. [ ] **Designed trajectories**: several still fly behind the
-   facade-mounted RIS (`straight_y` sits exactly in its plane). Redesign
-   them for the new geometry.
+7. [x] Designed trajectories moved in front of the RIS.
 8. [ ] Higher-resolution RIS phases (3-bit) and a coupling-aware
    continuous optimiser. This is where hardware-aware control should gain
    more than 0.5 dB.

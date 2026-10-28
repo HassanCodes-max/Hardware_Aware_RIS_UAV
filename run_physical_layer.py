@@ -182,6 +182,52 @@ def estimation_study(
     return rows
 
 
+def closed_loop_study(
+    config: SimulationConfig,
+    distances_m: tuple = (20.0, 50.0, 100.0),
+    pilot_lengths: tuple = (256, 1024, 4096),
+    trials: int = 3,
+) -> list[dict]:
+    """
+    Estimate the channel, configure the RIS from the estimate, measure SNDR.
+
+    Pipelines:
+      - naive: LS estimate, phases = -angle(estimate) (hardware-unaware);
+      - hardware_aware: LMMSE estimate, coupling/quantization-aware phases.
+    Both are compared with perfect-CSI hardware-aware control, so the gap
+    is the cost of estimation alone.
+    """
+
+    rows = []
+    for distance in distances_m:
+        position = np.array([distance, 0.0, 30.0])
+        bs_to_ris, ris_to_uav = ris_element_channels(position, config)
+        perfect_db = link_metrics(
+            position, config, hardware_aware_phases(bs_to_ris * ris_to_uav, config)
+        )["sndr_db"]
+
+        for pilots in pilot_lengths:
+            sndr = {"naive": [], "hardware_aware": []}
+            for trial in range(trials):
+                rng = np.random.default_rng(trial)
+                naive = estimate_cascaded_channel(position, config, pilots, False, rng)["estimate"]
+                aware = estimate_cascaded_channel(position, config, pilots, True, rng)["estimate"]
+                sndr["naive"].append(link_metrics(position, config, -np.angle(naive))["sndr_db"])
+                sndr["hardware_aware"].append(
+                    link_metrics(position, config, hardware_aware_phases(aware, config))["sndr_db"]
+                )
+
+            rows.append({
+                "x_m": distance,
+                "pilot_symbols_per_pattern": pilots,
+                "perfect_csi_sndr_db": round(perfect_db, 2),
+                "naive_sndr_db": round(float(np.mean(sndr["naive"])), 2),
+                "hardware_aware_sndr_db": round(float(np.mean(sndr["hardware_aware"])), 2),
+            })
+
+    return rows
+
+
 def main() -> None:
     """Run every experiment and write one JSON file."""
 
@@ -203,6 +249,7 @@ def main() -> None:
         "element_scaling": element_scaling(config, reference),
         "ris_sizing_availability": ris_sizing(config),
         "channel_estimation": estimation_study(config),
+        "closed_loop_estimate_then_control": closed_loop_study(config),
     }
 
     RESULTS_DIR.mkdir(exist_ok=True)
