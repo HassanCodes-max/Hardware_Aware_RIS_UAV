@@ -23,8 +23,8 @@ knowledge with 64× fewer pilots than per-element LMMSE, and needs no pilots whe
 prediction is available; and (iii) predictive tracking delivers 99.3% of the ideal array gain at 500 ms
 latency, whereas persistence delivers 63%. On real 60 GHz measurements (DeepSense 6G Scenario 23) we
 show that exact blind beam prediction is bounded at 79% top-1 by measurement noise, and propose an
-AI-assisted reduced beam training scheme that selects the exact optimal beam 98.1% of the time
-(macro-F1 0.890, 95% CI lower bound 0.853) while measuring 4 of 64 beams, under sequence-level nested
+AI-assisted reduced beam training scheme that selects the exact optimal beam 98.2% of the time
+(macro-F1 0.898, 95% CI lower bound 0.864) while measuring 4 of 64 beams, under sequence-level nested
 cross-validation.
 
 **Index Terms**: mmWave, sub-THz, UAV, reconfigurable intelligent surface, beam training, beam
@@ -198,8 +198,12 @@ A two-layer GRU (hidden size 128) reads the last 8 sweeps (dB relative to peak) 
 and outputs beam logits added to a learned multiple of the last sweep, so that it learns a residual over
 persistence. Because near-tied labels are noise, we train against a **soft target**,
 softmax(P_{t+h}/0.5 dB), the measured power of the future sweep, rather than its argmax; a hard-label GRU
-is the ablation. Early stopping uses held-out training sequences. Random-forest and extra-trees
-baselines use the last 3 sweeps.
+is the ablation. Early stopping uses held-out training sequences. Our final predictor averages the
+log-probabilities of three such GRUs (different seeds) trained with **beam-axis augmentation**: each
+batch is shifted by up to ±3 beams and mirrored with probability 0.5, identically for history, last
+sweep and target, with vacated edge beams set to the row's floor rather than wrapped. A UAV at a slightly
+different angle sees a shifted beam pattern, so this adds plausible examples of rarely visited beams.
+Random-forest and extra-trees baselines use the last 3 sweeps.
 
 **Noise ceiling.** As an upper bound for any causal predictor of the exact label, a non-causal oracle
 that averages the sweeps *before and after* the target sweep reaches only **79.0% exact top-1 and 0.59
@@ -227,8 +231,21 @@ held-out fold. 95% confidence intervals come from 500 bootstrap resamples of who
 
 With ideal hardware the SNR is 15.8 dB at 20 m and 8.8 dB at 50 m. At 50 m the combined impairments cost
 **7.83 dB** (Fig. 1): amplitude–phase coupling 5.51 dB, PA nonlinearity 1.46 dB, S11 mismatch 0.92 dB,
-2-bit quantization 0.91 dB and phase noise 0.03 dB. Coupling-aware phase selection (Sec. III-A)
-recovers about 0.5 dB with 2-bit phases.
+2-bit quantization 0.91 dB and phase noise 0.03 dB.
+
+**Phase resolution and coupling strength.** Coupling-aware selection (Sec. III-A) gains more as more
+realisable states become available: 0.55, 0.92 and 1.01 dB at 2, 3 and 4 bits, and nothing at 1 bit
+(−0.06 dB). No measured coupling curve for a 60 GHz element is available to us, so we sweep its strength
+(Table I-a). The total penalty ranges from 2.9 dB without coupling to 7.8 dB at β_min = 0.2; the
+conclusions below hold across this range, and the gain of coupling-aware control shrinks as coupling
+weakens.
+
+*Table I-a. SNDR penalty vs coupling strength, UAV at 50 m, 2-bit phases.*
+
+| β_min | 0.2 | 0.4 | 0.6 | 0.8 | 1.0 (no coupling) |
+|---|---|---|---|---|---|
+| Penalty, naive control (dB) | 7.83 | 6.22 | 4.92 | 3.84 | 2.93 |
+| Penalty, coupling-aware (dB) | 7.28 | 5.98 | 4.83 | 3.80 | 2.90 |
 
 ![Fig. 1](figures/fig_impairment_ablation.png)
 
@@ -255,6 +272,21 @@ receives −115.9 dBm at 140 GHz at 50 m, and the N² law holds at both carriers
 | 16×16 | −90.2 | −103.8 |
 | 32×32 | −78.2 | −91.8 |
 | 64×64 | −66.2 | −79.7 |
+
+**60 vs 140 GHz at equal aperture.** With the same 8 cm panel (32×32 at 60 GHz, 75×75 at 140 GHz) and the
+same transceiver hardware, 140 GHz performs slightly better (ideal SNR 16.6 vs 15.8 dB at 20 m; 47.5% vs
+34.4% availability): it avoids the 60 GHz oxygen line (0.69 vs 14.6 dB/km) and fits 5.5× more elements in
+the same area. With published D-band hardware (about 20 dBm PA saturation [20], hence 14 dBm average at
+6 dB back-off, and an LNA noise figure near 10 dB [21]) the link loses about 9 dB, and the RIS must grow
+to 32 cm (300×300 elements) for full availability with realistic impairments, against 24 cm at 60 GHz
+(Table I-b). At sub-THz, transceiver hardware, not propagation, sets the RIS size.
+
+*Table I-b. Availability (%) over the flight, 140 GHz with D-band hardware, ideal / realistic RIS.*
+
+| RIS (aperture) | 75×75 (8 cm) | 150×150 (16 cm) | 225×225 (24 cm) | 300×300 (32 cm) |
+|---|---|---|---|---|
+| Ideal hardware | 13.1 | 68.9 | 100 | 100 |
+| Realistic, coupling-aware | 1.6 | 27.9 | 67.2 | 100 |
 
 ### B. Channel Estimation
 
@@ -309,11 +341,12 @@ constant velocity 71.4% and persistence 63.0%. All predictors run in under 0.1 m
 
 ### D. Beam Prediction on Scenario 23
 
-**Blind prediction** (Table V). At t + 1 (≈140 ms) the soft-target GRU selects a beam within the 0.25 dB
-noise margin 95.6% of the time (class-balanced 89.2%), has 95.1% top-3 accuracy, and delivers 98.9% of
-the optimal received power. Its exact top-1 is 70.9% against the 79.0% oracle ceiling. Trained on hard
-labels, the same GRU falls below persistence at t + 3; the soft target turns it into the best model at
-both horizons.
+**Blind prediction** (Table V). At t + 1 (≈140 ms) the augmented GRU ensemble selects a beam within the
+0.25 dB noise margin 96.4% of the time (class-balanced 91.7%), has 96.1% top-3 accuracy, and delivers
+99.1% of the optimal received power. Its exact top-1 is 72.1% against the 79.0% oracle ceiling. At t + 3
+it reaches 86.0% within noise and 96.8% power ratio. Trained on hard labels, a single GRU falls below
+persistence at t + 3; the soft target makes it competitive, and augmentation with ensembling makes it
+the best model on every metric at both horizons, including blind macro-F1 at t + 3 (0.28 vs 0.26).
 
 *Table V. Blind beam prediction, GroupKFold over 35 sequences.*
 
@@ -322,16 +355,18 @@ both horizons.
 | t+1 | Persistence | 93.7 | 86.3 | 94.5 | 98.6 | 69.2 | 0.45 |
 | t+1 | RF + sweep prior | 93.7 | 86.7 | 94.9 | 98.6 | 70.4 | 0.41 |
 | t+1 | GRU, hard label | 93.7 | 82.3 | 94.6 | 98.6 | 70.9 | 0.41 |
-| t+1 | **GRU, soft target** | **95.6** | **89.2** | **95.1** | **98.9** | **70.9** | **0.45** |
+| t+1 | GRU, soft target | 95.6 | 89.3 | 95.1 | 98.9 | 70.9 | 0.45 |
+| t+1 | **GRU ensemble, augmented** | **96.4** | **91.7** | **96.1** | **99.1** | **72.1** | **0.49** |
 | t+3 | Persistence | 78.1 | 66.1 | 80.3 | 93.7 | 53.3 | 0.26 |
 | t+3 | GRU, hard label | 73.2 | 57.9 | 80.6 | 93.1 | 49.5 | 0.21 |
-| t+3 | **GRU, soft target** | **81.1** | **65.8** | **84.8** | **95.5** | **55.3** | **0.24** |
+| t+3 | GRU, soft target | 81.1 | 65.8 | 84.8 | 95.5 | 55.3 | 0.24 |
+| t+3 | **GRU ensemble, augmented** | **86.0** | **75.5** | **86.9** | **96.8** | **56.7** | **0.28** |
 
 **Reduced beam training** (Table VI, Fig. 4). Measuring a handful of predicted beams resolves the
-near-ties that blind prediction cannot. At t + 1, the fused GRU + last-sweep shortlist selects the exact
-optimal beam 98.1% of the time with macro-F1 0.890 over all 56 classes, measuring 4 of 64 beams (6.3% of
-a full sweep); both 95% intervals lie above 0.85. The adaptive shortlist reaches 98.8% / 0.898 with 5.6
-beams on average.
+near-ties that blind prediction cannot. At t + 1, the GRU-ensemble + last-sweep shortlist selects the
+exact optimal beam 98.2% of the time with macro-F1 0.898 over all 56 classes, measuring 4 of 64 beams
+(6.3% of a full sweep); both 95% intervals lie above 0.85 (macro-F1 lower bound 0.864). The adaptive
+shortlist reaches 98.8% / 0.898 with 5.6 beams on average.
 
 *Table VI. Reduced beam training, nested-CV operating points, scored against the full-sweep ground
 truth [95% CI over sequences].*
@@ -340,10 +375,12 @@ truth [95% CI over sequences].*
 |---|---|---|---|---|
 | t+1 | Last-sweep ranking | 4.2 | 97.6 [96.4, 98.5] | 0.871 [0.829, 0.912] |
 | t+1 | Window around last beam | 6.0 | 99.0 [98.4, 99.6] | 0.929 [0.890, 0.980] |
-| t+1 | **GRU + last sweep** | **4.0** | **98.1 [97.2, 98.7]** | **0.890 [0.853, 0.929]** |
+| t+1 | GRU (single) + last sweep | 4.0 | 98.1 [97.2, 98.7] | 0.890 [0.853, 0.929] |
+| t+1 | **GRU ensemble + last sweep** | **4.0** | **98.2 [97.3, 98.9]** | **0.898 [0.864, 0.948]** |
 | t+1 | **GRU adaptive (τ = 0.8)** | **5.6** | **98.8 [98.4, 99.3]** | **0.898 [0.857, 0.953]** |
 | t+3 | Last-sweep ranking | 16.0 | 97.9 [96.6, 98.8] | 0.860 [0.823, 0.906] |
 | t+3 | GRU, soft target | 10.8 | 97.1 [95.2, 98.7] | 0.861 [0.804, 0.928] |
+| t+3 | **GRU ensemble, augmented** | **8.4** | **98.0 [96.6, 99.2]** | **0.865 [0.813, 0.920]** |
 
 ![Fig. 4](figures/fig_beam_training.png)
 
@@ -352,9 +389,11 @@ predictions; dotted line: non-causal blind-prediction ceiling.*
 
 The learned ranking's advantage is in measurement cost rather than in the attainable accuracy: a
 non-learned window of 6 beams also exceeds 85% at t + 1, while the AI shortlists reach the target with
-4–5.6 beams, and at t + 3 the GRU needs 10.8 beams against 16 for the last-sweep ranking. At t + 3 the
-macro-F1 point estimates exceed 0.85 but their intervals do not; classes with at most 5 samples drive
-the gap (macro-F1 over classes with ≥ 5 samples is 0.94–0.96).
+4–5.6 beams, and at t + 3 the augmented ensemble needs 8.4 beams against 16 for the last-sweep ranking
+(a 48% saving). At t + 3 the macro-F1 point estimates exceed 0.85 but their intervals do not: the rarest
+beams at this horizon occur in only one or two of the 35 flights, so resampling flights moves macro-F1
+widely. Classes with at most 5 samples drive the gap (macro-F1 over classes with ≥ 5 samples is
+0.94–0.96); more flights, not a different model, are needed to narrow this interval.
 
 ---
 
@@ -366,20 +405,22 @@ Random Forest reported at 80.9% on the current-beam task was below the 100% that
 blind to the common phase offset. We recommend that RIS tracking studies report delivered gain and that
 beam-prediction studies on argmax-labelled data predict future beams under sequence-level splits.
 
-**Where hardware awareness pays.** The largest impairment is amplitude–phase coupling. With 2-bit phases
-coupling-aware control recovers only 0.5 dB, because the four available states leave little room; the
-estimation side gains more (LMMSE removes the coupling bias), and the largest system-level effect is
-the 2.25× element count needed for coverage.
+**Where hardware awareness pays.** The largest impairment is amplitude–phase coupling. Coupling-aware
+control recovers 0.55 dB at 2 bits and about 1 dB at 3–4 bits; a coupled element cannot reflect strongly
+at every phase, so a gap remains. The estimation side gains more (LMMSE removes the coupling bias), and
+the largest system-level effects are the RIS sizes needed for coverage: 2.25× the ideal element count at
+60 GHz, and a 32 cm panel at 140 GHz once D-band transceiver limits are included.
 
-**Learning where it helps.** On power sweeps alone the GRU's gain over persistence is modest at t + 1 and
-clearer at t + 3. The soft target matters more than the architecture. Logit adjustment for the class
+**Learning where it helps.** On power sweeps alone the learned gain over persistence is modest at t + 1
+and clear at t + 3 (86.0% vs 78.1% within noise; 8.4 vs 16 beams for the shortlist target). The soft
+target and beam-axis augmentation matter more than the architecture. Logit adjustment for the class
 imbalance [19] lowered every metric because the beam distribution differs between flights.
 
 **Limitations.** Saleh and coupling coefficients are literature values, not measurements of a 60 GHz
-PA or RIS. The obliquity exponent is assumed. The physical-layer results are simulated; the
+PA or RIS; Table I-a bounds the effect of the coupling strength. The obliquity exponent is assumed. The physical-layer results are simulated; the
 beam-prediction results use power sweeps only, because the UAV GPS files of Scenario 23 were not
 available to us at the time of writing. The t + 3 macro-F1 is close to 0.85 and its interval includes
-it. The 140 GHz branch is used only for link budget and scaling.
+it. The D-band transceiver values are representative published figures, not a specific design.
 
 ---
 
@@ -387,9 +428,10 @@ it. The 140 GHz branch is used only for link budget and scaling.
 
 We built a hardware-aware model of an RIS-assisted mmWave UAV link and used it, with real 60 GHz
 measurements, to evaluate beam management end to end. Hardware impairments cost 7.8 dB and 2.25× RIS
-elements; a position-parametric estimator matches perfect channel knowledge with 64× fewer pilots;
+elements at 60 GHz, and D-band transceiver limits push the 140 GHz panel to 32 cm; a position-parametric
+estimator matches perfect channel knowledge with 64× fewer pilots;
 Kalman-based prediction preserves 99.3% of the array gain at 500 ms latency; and AI-assisted reduced beam
-training selects the exact optimal beam 98.1% of the time at 6.3% of the sweep cost, with all reported
+training selects the exact optimal beam 98.2% of the time at 6.3% of the sweep cost, with all reported
 metrics evaluated under sequence-level cross-validation. Future work will add UAV position to beam
 prediction, measured hardware coefficients, and joint training of the tracker and the beam shortlist.
 
@@ -455,6 +497,12 @@ Laboratory of Electronics, Tech. Rep. 216, 1952.
 efficiency," *Found. Trends Signal Process.*, vol. 11, no. 3–4, pp. 154–655, 2017.
 
 [19] A. K. Menon *et al.*, "Long-tail learning via logit adjustment," in *Proc. ICLR*, 2021.
+
+[20] A. S. H. Ahmed *et al.*, "A 140GHz power amplifier with 20.5dBm output power and 20.8% PAE in
+250-nm InP HBT technology," in *Proc. IEEE IMS*, 2020. **[VERIFY author list]**
+
+[21] **[VERIFY: cite a D-band (≈140 GHz) SiGe LNA with ≈10 dB noise figure; a 0.13 µm SiGe 5-stage
+amplifier with NF down to 10 dB was found but its full citation needs checking.]**
 
 ---
 

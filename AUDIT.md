@@ -195,8 +195,8 @@ paper and for reviewers.
    non-causal oracle that averages the sweeps before and after the target
    gets 79.0% exact top-1 and 0.59 macro-F1. In 75% of sweeps the top two
    beams are within 0.25 dB, while the same beam fluctuates by a median
-   0.18 dB between sweeps. Our best blind predictor (GRU, soft target)
-   gets 70.9% / 0.45. That is reported, not hidden.
+   0.18 dB between sweeps. Our best blind predictor (augmented GRU
+   ensemble) gets 72.1% / 0.49. That is reported, not hidden.
 2. **The deployed task is reduced beam training.** Predict a shortlist,
    measure those K beams, keep the best, and score against the full
    64-beam ground truth. This resolves near-ties with real measurements
@@ -205,13 +205,13 @@ paper and for reviewers.
    fold, K or tau is picked on the other folds. The CIs come from
    bootstrapping over the 35 flight sequences.
 
-| Metric (t+1, GRU + sweep fusion, 4 of 64 beams) | Value [95% CI] | ≥ 85%? |
+| Metric (t+1, GRU ensemble + sweep fusion, 4 of 64 beams) | Value [95% CI] | ≥ 85%? |
 |---|---|---|
-| Exact top-1 vs full-sweep ground truth | 98.1% [97.2, 98.7] | ✅ |
-| Macro-F1, all 56 classes | 0.890 [0.853, 0.929] | ✅ |
-| Within measurement noise (blind prediction) | 95.6% | ✅ |
-| Within noise, class-balanced (blind prediction) | 89.2% | ✅ |
-| Top-3 / ±1 beam / power ratio (blind prediction) | 95.1 / 91.5 / 98.9% | ✅ |
+| Exact top-1 vs full-sweep ground truth | 98.2% [97.3, 98.9] | ✅ |
+| Macro-F1, all 56 classes | 0.898 [0.864, 0.948] | ✅ |
+| Within measurement noise (blind prediction) | 96.4% | ✅ |
+| Within noise, class-balanced (blind prediction) | 91.7% | ✅ |
+| Top-3 / ±1 beam / power ratio (blind prediction) | 96.1 / 93.4 / 99.1% | ✅ |
 | Tracking: array gain at 10 / 100 / 500 ms | 100.0 / 99.98 / 99.3% | ✅ |
 | Channel estimation: % of perfect-CSI SNR | 96.5–100% | ✅ |
 | Link availability, 96×96 RIS, realistic hardware | 100% | ✅ |
@@ -223,5 +223,7 @@ Report these honestly in the paper:
 - The plain local window (no AI) also meets the targets at t+1, with 6
   beams. The AI's contribution is reaching them with fewer measurements,
   and a third fewer at t+3.
-- t+3: point estimates meet 85% (e.g. GRU 97.1% / 0.861) but the
-  macro-F1 CIs straddle 0.85, so claim "about 85%", not "≥ 85%".
+- t+3: point estimates meet 85% (augmented ensemble 98.0% / 0.865 with
+  8.4 beams) but the macro-F1 CI [0.813, 0.920] straddles 0.85, because
+  the rarest beams occur in only one or two of the 35 flights. Claim
+  "about 85%", not "≥ 85%".

@@ -70,10 +70,12 @@ as much as common ones (the role macro-F1 plays for exact labels).
 |---|---|---|---|---|---|---|---|---|
 | t+1 (~140 ms) | Persistence | 93.6% | 86.3% | 94.5% | 91.4% | 98.6% | *69.2%* | *0.45* |
 | | RF + sweep prior | 93.7% | 86.7% | 94.9% | 89.6% | 98.6% | *70.4%* | *0.41* |
-| | **GRU, soft target** | **95.6%** | **89.2%** | **95.1%** | **91.5%** | **98.9%** | *70.9%* | *0.45* |
+| | GRU, soft target | 95.6% | 89.3% | 95.1% | 91.5% | 98.9% | *70.9%* | *0.45* |
+| | **GRU ensemble, augmented** | **96.4%** | **91.7%** | **96.1%** | **93.4%** | **99.1%** | *72.1%* | *0.49* |
 | t+3 (~0.4 s) | Persistence | 78.1% | 66.1% | 80.3% | 76.7% | 93.7% | *53.3%* | *0.26* |
 | | RF + sweep prior | 78.5% | 63.0% | 84.2% | 75.3% | 94.4% | *53.9%* | *0.21* |
-| | **GRU, soft target** | **81.1%** | **65.8%** | **84.8%** | **78.1%** | **95.5%** | *55.3%* | *0.24* |
+| | GRU, soft target | 81.1% | 65.8% | 84.8% | 78.1% | 95.5% | *55.3%* | *0.24* |
+| | **GRU ensemble, augmented** | **86.0%** | **75.5%** | **86.9%** | **83.8%** | **96.8%** | *56.7%* | *0.28* |
 
 The GRU is trained against softmax(measured dB / 0.5 dB) of the future
 sweep instead of the argmax label. With hard labels it loses to
@@ -101,10 +103,12 @@ sequences.
 |---|---|---|---|---|
 | t+1 | Last sweep (no AI) | 4.2 (6.6%) | 97.6% [96.4, 98.5] | 0.871 [0.829, 0.912] |
 | t+1 | Window around last beam (no AI) | 6.0 (9.4%) | 99.0% [98.4, 99.6] | 0.929 [0.890, 0.980] |
-| t+1 | **GRU + last-sweep fusion** | **4.0 (6.3%)** | **98.1% [97.2, 98.7]** | **0.890 [0.853, 0.929]** |
+| t+1 | GRU + last-sweep fusion | 4.0 (6.3%) | 98.1% [97.2, 98.7] | 0.890 [0.853, 0.929] |
+| t+1 | **GRU ensemble + last-sweep fusion** | **4.0 (6.3%)** | **98.2% [97.3, 98.9]** | **0.898 [0.864, 0.948]** |
 | t+1 | **GRU adaptive (stop at 80% confidence)** | 5.6 (8.7%) | **98.8% [98.4, 99.3]** | **0.898 [0.857, 0.953]** |
 | t+3 | Last sweep (no AI) | 16.0 (25%) | 97.9% | 0.860 [0.823, 0.906] |
 | t+3 | GRU soft | 10.8 (16.9%) | 97.1% | 0.861 [0.804, 0.928] |
+| t+3 | **GRU ensemble, augmented** | **8.4 (13.1%)** | **98.0%** | **0.865 [0.813, 0.920]** |
 
 At t+1, the operating point, both AI shortlists meet 85% on exact top-1
 and all-class macro-F1 with the whole CI above 0.85, while measuring
@@ -254,6 +258,22 @@ GPS alone can't steer a 32×32 RIS: 5 m of error is wider than the beam.
   from the prior's angular uncertainty and the predicted SNR. The margin
   (128) was chosen on separate seeds from the reported runs.
 
+### 2026-10-29: Major update 7 (hardware sensitivity and sub-THz)
+
+- `phase_resolution_study`: coupling-aware control gains 0.55, 0.92 and
+  1.01 dB at 2, 3 and 4 bits, and nothing at 1 bit.
+- `coupling_sensitivity`: `ris_coupling_beta_min` is now a config field.
+  The total hardware penalty spans 2.9–7.8 dB over the unmeasured
+  coupling strength.
+- `carrier_study` and D-band sizing: at equal 8 cm aperture, 140 GHz
+  slightly beats 60 GHz on propagation. With published D-band hardware
+  (14 dBm average, NF 10 dB) it needs a 32 cm RIS for full availability,
+  vs 24 cm at 60 GHz.
+- Paper updated: Tables I-a and I-b, the 140 GHz paragraph, and
+  references [20] and [21] (marked to verify).
+- Beam GRU: beam-shift/mirror augmentation plus a 3-seed ensemble
+  (`gru_soft_aug_ens`), aimed at the t+3 macro-F1 interval.
+
 ### 2026-10-29: Major update 6 (revised paper)
 
 - `paper/revised_paper.md`: the full revised manuscript. Every number
@@ -304,10 +324,8 @@ Ordered by impact. Check items off here as they're done.
 5c. [x] Adaptive pilot budget from the prior and predicted SNR, with
    GPS or Kalman priors (`adaptive_study`): ≥ 96.5% of perfect-CSI SNR
    on average, and 0 pilots with a 100 ms tracker prior.
-6. [ ] **Hardware parameters**: replace the textbook Saleh and coupling
-   coefficients with values from a D-band PA / 60 GHz RIS datasheet or
-   paper, and run the sweep at 140 GHz.
+6. [x] D-band PA and LNA values taken from published results; coupling
+   swept because no measured 60 GHz curve was found. Still open: a
+   measured 60 GHz RIS unit-cell response, if the lab can provide one.
 7. [x] Designed trajectories moved in front of the RIS.
-8. [ ] Higher-resolution RIS phases (3-bit) and a coupling-aware
-   continuous optimiser. This is where hardware-aware control should gain
-   more than 0.5 dB.
+8. [x] Phase-resolution sweep done (up to 1.01 dB gain at 4 bits).
