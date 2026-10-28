@@ -53,6 +53,7 @@ python -m pytest tests          # 7 regression tests, < 1 s
 | `build_scenario23_dataset.py`, `public_data_adapter.py` | Scenario 23 loading (rebuilding needs the full download, see Next steps) |
 | `public_data/scenario23_dev/` | Scenario 23 manifest + extracted 64-beam power CSV (only 699 of 11,387 images present) |
 | `legacy/` | First-draft Random Forest scripts, kept so Table II can be reproduced |
+| `make_figures.py`, `paper/` | Regenerates every paper figure from `results/`; `paper/revised_paper.md` is the revised manuscript |
 | `tests/` | Regression tests for the physics and for the audit facts |
 
 ## Current results (2026-10-29)
@@ -69,7 +70,7 @@ as much as common ones (the role macro-F1 plays for exact labels).
 |---|---|---|---|---|---|---|---|---|
 | t+1 (~140 ms) | Persistence | 93.6% | 86.3% | 94.5% | 91.4% | 98.6% | *69.2%* | *0.45* |
 | | RF + sweep prior | 93.7% | 86.7% | 94.9% | 89.6% | 98.6% | *70.4%* | *0.41* |
-| | **GRU, soft target** | **95.6%** | **89.3%** | **95.1%** | **91.5%** | **98.9%** | *70.9%* | *0.45* |
+| | **GRU, soft target** | **95.6%** | **89.2%** | **95.1%** | **91.5%** | **98.9%** | *70.9%* | *0.45* |
 | t+3 (~0.4 s) | Persistence | 78.1% | 66.1% | 80.3% | 76.7% | 93.7% | *53.3%* | *0.26* |
 | | RF + sweep prior | 78.5% | 63.0% | 84.2% | 75.3% | 94.4% | *53.9%* | *0.21* |
 | | **GRU, soft target** | **81.1%** | **65.8%** | **84.8%** | **78.1%** | **95.5%** | *55.3%* | *0.24* |
@@ -253,6 +254,16 @@ GPS alone can't steer a 32×32 RIS: 5 m of error is wider than the beam.
   from the prior's angular uncertainty and the predicted SNR. The margin
   (128) was chosen on separate seeds from the reported runs.
 
+### 2026-10-29: Major update 6 (revised paper)
+
+- `paper/revised_paper.md`: the full revised manuscript. Every number
+  comes from `results/`, and a reproduction table maps each figure and
+  table to its script.
+- `make_figures.py` regenerates the 4 paper figures (300 dpi, IEEE
+  column width).
+- Corrected reference [2] (authors and venue, marked to verify). Ref. [7]
+  still needs authors.
+
 ### 2026-10-29: Major update 5 (exact-label metrics ≥ 85%)
 
 - Proved the ceiling for blind exact-beam prediction: the non-causal
@@ -278,7 +289,9 @@ Ordered by impact. Check items off here as they're done.
    Waiting on step 1. Goal: top-3 ≥ 90% at t+3.
 3. [x] Sequence model: GRU with soft target (`beam_sequence_model.py`).
    Next, try a TCN or Transformer once GPS is available.
-4. [ ] **Rewrite the paper** per AUDIT.md:
+4. [x] Paper rewritten: `paper/revised_paper.md`. Remaining: move it
+   into the IEEE Word/LaTeX template, and resolve the [VERIFY] items.
+   The original plan was:
    - Table II: new task, split and metrics.
    - Sec. IV/VI-E: the array-gain metric; the conclusion is reversed.
    - Sec. VI-B: new link budget and the impairment ablation.
