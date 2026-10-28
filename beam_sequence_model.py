@@ -160,10 +160,20 @@ def train_model(
 
 def evaluate_horizon(
     data: dict[str, np.ndarray],
-) -> list[dict]:
-    """GroupKFold over sequences; one inner group split for early stopping."""
+) -> tuple[list[dict], dict[str, np.ndarray]]:
+    """
+    GroupKFold over sequences; one inner group split for early stopping.
+
+    Also returns out-of-fold beam scores for every sample, so downstream
+    experiments (beam_training_overhead.py) use predictions made by a
+    model that never saw that sample's sequence.
+    """
 
     rows = []
+    out_of_fold = {
+        name: np.full((len(data["target"]), BEAMS), np.nan, dtype=np.float32)
+        for name in ("gru_hard_label", "gru_soft_target")
+    }
     outer = GroupKFold(n_splits=FOLDS)
 
     for fold, (train_all, test) in enumerate(outer.split(data["windows"], data["target"], data["groups"])):
@@ -192,13 +202,14 @@ def evaluate_horizon(
             inference_ms = (time.perf_counter() - started) * 1e3 / len(test)
 
             name = "gru_soft_target" if soft else "gru_hard_label"
+            out_of_fold[name][test] = scores
             rows.append({"model": name, "fold": fold,
                          **link_metrics(scores, target, target_power),
                          "inference_ms": inference_ms, "train_s": train_s})
             print(f"  fold {fold} {name}: top1 {rows[-1]['top1_acc']:.3f} "
                   f"top3 {rows[-1]['top3_acc']:.3f} power {rows[-1]['power_ratio']:.3f}")
 
-    return rows
+    return rows, out_of_fold
 
 
 def main() -> None:
@@ -207,16 +218,26 @@ def main() -> None:
     power, labels, sequences, time_s, kinematics = load_scenario23()
     print(f"UAV kinematics: {'yes' if kinematics is not None else 'no'}")
 
+    RESULTS_DIR.mkdir(exist_ok=True)
+
     all_rows = []
     for horizon in HORIZONS:
         data = build_windows(power, labels, sequences, time_s, kinematics, horizon)
         print(f"Horizon t+{horizon}: {len(data['target'])} windows")
-        all_rows += [{"horizon": horizon, **row} for row in evaluate_horizon(data)]
+        rows, out_of_fold = evaluate_horizon(data)
+        all_rows += [{"horizon": horizon, **row} for row in rows]
+        np.savez_compressed(
+            RESULTS_DIR / f"beam_sequence_oof_h{horizon}.npz",
+            **out_of_fold,
+            target=data["target"],
+            target_power=data["target_power"],
+            last_sweep_db=data["last_sweep_db"],
+            groups=data["groups"],
+        )
 
     table = pd.DataFrame(all_rows)
     summary = table.drop(columns="fold").groupby(["horizon", "model"]).mean()
 
-    RESULTS_DIR.mkdir(exist_ok=True)
     table.to_csv(RESULTS_DIR / "beam_sequence_folds.csv", index=False)
     summary.round(4).to_csv(RESULTS_DIR / "beam_sequence_metrics.csv")
     (RESULTS_DIR / "beam_sequence_metrics.json").write_text(json.dumps({
