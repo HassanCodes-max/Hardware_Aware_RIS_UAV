@@ -66,7 +66,7 @@ def figure_beam_training() -> None:
     ceiling = json.loads((RESULTS / "beam_training_overhead.json").read_text())["noncausal_oracle_ceiling"]
 
     series = [
-        ("gru_soft+sweep", "GRU + last sweep (AI)", BLUE, "o"),
+        ("gru_aug_ens+sweep", "GRU ensemble + last sweep (AI)", BLUE, "o"),
         ("window", "Window around last beam", ORANGE, "s"),
         ("last_sweep", "Last-sweep ranking", AQUA, "^"),
     ]

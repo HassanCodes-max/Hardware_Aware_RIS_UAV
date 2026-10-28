@@ -19,6 +19,8 @@ Shortlists:
 - last_sweep: the K strongest beams of the last measured sweep;
 - window: K beams centred on the last best beam (classic local search);
 - gru_soft / gru_hard: out-of-fold GRU rankings (beam_sequence_model.py);
+- gru_aug_ens / gru_aug_ens+sweep: the same for the augmented 3-seed
+  ensemble (its scores are already averaged log-probabilities);
 - gru_soft+sweep: z-scored GRU log-probabilities plus the z-scored last
   sweep, equally weighted. The GRU carries motion trends, the last sweep
   carries the current fine structure, and each corrects the other.
@@ -96,6 +98,8 @@ def shortlist_rankings(
         "gru_hard": np.argsort(-data["gru_hard_label"], axis=1),
         "gru_soft": np.argsort(-data["gru_soft_target"], axis=1),
         "gru_soft+sweep": np.argsort(-fused, axis=1),
+        "gru_aug_ens": np.argsort(-data["gru_soft_aug_ens"], axis=1),
+        "gru_aug_ens+sweep": np.argsort(-(zscore(data["gru_soft_aug_ens"]) + zscore(last)), axis=1),
     }
 
 
