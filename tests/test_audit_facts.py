@@ -87,3 +87,19 @@ def test_kinematics_loader_reads_unit2_files(tmp_path):
     assert kinematics["uav_east_m"].iloc[1] > 8.0
     assert np.allclose(kinematics["unit2_height"], 20.0)
     assert (kinematics["uav_elevation_rad"] > 0).all()
+
+
+def test_parametric_estimator_recovers_perfect_csi_gain():
+    from hardware import hardware_aware_phases
+    from parametric_estimation import cascaded_channel, random_training, refine_position, send_pilots
+
+    config = SimulationConfig()
+    position = np.array([50.0, 0.0, 30.0])
+    rng = np.random.default_rng(0)
+    received, nominal = send_pilots(position, random_training(64, config, rng), config, 1024, rng)
+    estimate = refine_position(position + rng.normal(0.0, 5.0, 3), received, nominal, config)
+
+    def sndr(p):
+        return link_metrics(position, config, hardware_aware_phases(cascaded_channel(p, config), config))["sndr_db"]
+
+    assert sndr(estimate) > sndr(position) - 0.5

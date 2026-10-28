@@ -43,6 +43,7 @@ python -m pytest tests          # 7 regression tests, < 1 s
 | File | Role |
 |---|---|
 | `config.py` | All parameters. `SimulationConfig()` is the corrected v2 model; `SimulationConfig.paper_v1()` reproduces the first draft; `.ideal()` turns off all impairments. |
+| `parametric_estimation.py` | Position-parametric estimator: GPS prior + M pilot patterns → refine the UAV direction → phases from g(p̂) |
 | `channel.py` | Channels H1/H2, coherent phases, `link_metrics` (SNR, SNDR, SE, BER), `beamforming_gain_ratio`, `estimate_cascaded_channel` (naive LS vs hardware-aware LMMSE) |
 | `hardware.py` | Saleh PA + Bussgang factors, S11, RIS quantization, phase noise, amplitude–phase coupling, `hardware_aware_phases` |
 | `ris.py` | RIS element positions for any panel orientation |
@@ -99,6 +100,21 @@ The hardware-aware pipeline wins at every distance and pilot length, by
 position-based tracking keeps more than 99% of the gain with no pilots.
 This argues for setting phases from tracking and using pilots only to
 refine them.
+
+**Parametric estimation** (GPS prior with 5 m error per axis; SNDR in dB)
+
+| UAV at | Perfect CSI | GPS only | Parametric, 16×256 = 4k pilots | Parametric, 64×1024 = 65k pilots | Per-element LMMSE, 1024×4096 = 4.2M pilots |
+|---|---|---|---|---|---|
+| 20 m | 7.47 | −23.7 | 7.32 | **7.47** | 7.32 |
+| 50 m | 1.50 | −31.4 | −23.8 | **1.49** | 1.07 |
+| 100 m | −4.75 | −22.9 | −47.9 | **−4.90** | −6.33 |
+
+The cascaded channel depends only on the UAV's direction from the RIS
+(3 unknowns, not 1024). Refining that direction from a few random pilot
+patterns reaches near-perfect CSI with **64× fewer pilots** than
+per-element LMMSE. Below a pilot-energy threshold the search locks onto
+noise, as at 100 m with 4k pilots, so the budget must scale with range.
+GPS alone can't steer a 32×32 RIS: 5 m of error is wider than the beam.
 
 **Physical layer** (60 GHz, 32×32 RIS, 20 dBm, 25/10 dBi, UAV at 50 m)
 
@@ -167,6 +183,15 @@ refine them.
   account sign-in, and no public mirror exists. This step needs a person
   (see below).
 
+### 2026-10-29: Major update 3 (parametric channel estimation)
+
+- New `parametric_estimation.py`: ML direction refinement from M random
+  RIS pilot patterns around a GPS prior, vectorised over candidates.
+- `run_physical_layer.py` adds `parametric_study`, which compares GPS-only,
+  parametric and per-element LMMSE control by pilot budget.
+- New regression test: the parametric estimate gets within 0.5 dB of
+  perfect CSI at 50 m.
+
 ## Next steps (what we have to do)
 
 Ordered by impact. Check items off here as they're done.
@@ -188,8 +213,11 @@ Ordered by impact. Check items off here as they're done.
    - Sec. VI-D: the 140 GHz numbers are resolved.
    - Fix the "sub-THz" wording at 60 GHz and references [2] and [7].
 5. [x] Closed loop: estimate, then control, then measure SNDR
-   (`closed_loop_study`). Next, a parametric (angle-based) estimator,
-   which should close most of the gap to perfect CSI at 100 m.
+   (`closed_loop_study`).
+5b. [x] Parametric (direction-based) estimator: within 0.15 dB of perfect
+   CSI using 64× fewer pilots (`parametric_study`). Next, make the pilot
+   budget adaptive with range, and feed the Kalman prediction in as the
+   prior instead of raw GPS.
 6. [ ] **Hardware parameters**: replace the textbook Saleh and coupling
    coefficients with values from a D-band PA / 60 GHz RIS datasheet or
    paper, and run the sweep at 140 GHz.
