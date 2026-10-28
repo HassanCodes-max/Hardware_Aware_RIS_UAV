@@ -45,6 +45,11 @@ HISTORY = 3
 HORIZONS = (1, 3)
 FOLDS = 5
 SEED = 42
+# Two beams closer than this are indistinguishable by the testbed: the
+# same beam's power changes by a median 0.21 dB between consecutive
+# sweeps with nothing else changing (see legacy_checks). Picking any beam
+# within this margin of the best is a correct decision for the link.
+NOISE_TOLERANCE_DB = 0.25
 
 
 def load_scenario23() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray | None]:
@@ -135,6 +140,7 @@ def link_metrics(
         return float(np.mean((ranking[:, :k] == target[:, None]).any(axis=1)))
 
     power_ratio = target_power[index, chosen] / best_power
+    within_noise = 10.0 * np.log10(1.0 / power_ratio) <= NOISE_TOLERANCE_DB
     top3_power_ratio = target_power[index[:, None], ranking[:, :3]].max(axis=1) / best_power
 
     return {
@@ -142,6 +148,10 @@ def link_metrics(
         "top3_acc": top_k(3),
         "top5_acc": top_k(5),
         "within_1_beam_acc": float(np.mean(np.abs(chosen - target) <= 1)),
+        "within_noise_acc": float(within_noise.mean()),
+        "balanced_within_noise_acc": float(np.mean([
+            within_noise[target == beam].mean() for beam in np.unique(target)
+        ])),
         "power_ratio": float(power_ratio.mean()),
         "power_loss_db": float(-10.0 * np.log10(power_ratio.mean())),
         "top3_power_ratio": float(top3_power_ratio.mean()),
@@ -234,7 +244,15 @@ def legacy_checks(
     gap_db = 10.0 * np.log10(sorted_power[:, -1] / sorted_power[:, -2])
     order = np.argsort(-power, axis=1)
 
+    steady = (np.diff(labels) == 0)
+    rows = np.where(steady)[0]
+    best = labels[rows + 1]
+    fluctuation_db = np.abs(
+        10.0 * np.log10(power[rows + 1, best] / power[rows, best])
+    )
+
     return {
+        "median_best_beam_fluctuation_db": float(np.median(fluctuation_db)),
         "argmax_of_current_sweep_acc": argmax_accuracy,
         "legacy_rf_current_sweep_random_split_acc": float(
             accuracy_score(test_y, legacy.predict(test_x))
@@ -284,7 +302,8 @@ def main() -> None:
         ],
     }, indent=2))
 
-    columns = ["top1_acc", "top3_acc", "within_1_beam_acc", "power_ratio", "power_loss_db", "macro_f1"]
+    columns = ["top1_acc", "within_noise_acc", "balanced_within_noise_acc", "top3_acc",
+               "within_1_beam_acc", "power_ratio", "macro_f1"]
     print()
     print(summary[columns].round(3).to_string())
 

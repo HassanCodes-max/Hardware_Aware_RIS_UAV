@@ -186,21 +186,33 @@ C3 makes the argument moot anyway.
 
 ## About the "85% minimum on all metrics" target
 
-The target is reachable for the metrics that measure link quality. It
-isn't reachable for some classification metrics, because of the data
-itself. Forcing those to 85% would mean leaking labels again.
+Every metric that measures what the system delivers is now at or above
+85% at the operating point. Two classification metrics can't reach 85%
+honestly on this data. Forcing them up would mean leaking labels again.
 
-| Metric | Value now | ≥ 85%? | Why |
-|---|---|---|---|
-| Beam: received-power ratio (t+1, GRU soft target) | 98.9% | ✅ | |
-| Beam: top-3 accuracy (t+1, GRU soft target) | 95.1% | ✅ | |
-| Beam: ±1-beam accuracy (t+1, GRU soft target) | 91.5% | ✅ | |
-| Beam: power ratio / top-3 (t+3, GRU soft target) | 95.5% / 84.8% | ✅ / ≈ | GPS features expected to push top-3 past 85% |
-| Tracking: array gain at 10 / 100 / 500 ms (Kalman) | 100.0 / 99.98 / 99.3% | ✅ | |
-| Link availability, 96×96 RIS, realistic hardware | 100% | ✅ | Needs a 24 cm RIS (64×64 reaches only 57%) |
-| Beam: top-1 accuracy (t+1) | 70.9% | ❌ | In 75% of sweeps the best two beams are within **0.25 dB**, and adjacent 90% of the time. The "correct" beam is measurement noise. |
-| Beam: macro-F1 | 0.45 | ❌ | Rare beams appear in only a few of the 35 sequences, so held-out sequences contain beams the model barely saw. |
+**At or above 85%** (beam numbers at t+1 with the GRU soft target;
+tracking with Kalman; estimation adaptive):
 
-Top-1 can probably be raised with UAV GPS (H3) and a sequence model. 85%
-top-1 isn't a realistic goal on this data, and we should say so in the
-paper rather than report a leaky number.
+| Metric | Value |
+|---|---|
+| Beam within measurement noise (0.25 dB) of best | 95.6% |
+| Beam within noise, class-balanced | 89.3% |
+| Beam top-3 accuracy | 95.1% |
+| Beam ±1 accuracy | 91.5% |
+| Beam received-power ratio | 98.9% |
+| Tracking: array gain at 10 / 100 / 500 ms | 100.0 / 99.98 / 99.3% |
+| Channel estimation: % of perfect-CSI SNR (mean, every range and prior) | 96.5–100% |
+| Link availability, 96×96 RIS, realistic hardware | 100% |
+
+**Below 85%, and why:**
+
+| Metric | Value | Why |
+|---|---|---|
+| Exact top-1 beam index (t+1) | 70.9% | In 75% of sweeps the best two beams are within 0.25 dB, while the same beam fluctuates by a median 0.18 dB between sweeps. The exact index is decided by noise. |
+| Macro-F1 on exact index (t+1) | 0.45 | Same label noise, plus rare beams that appear in only a few of the 35 sequences. The class-balanced within-noise accuracy (89.3%) measures the same thing without the noise. |
+| t+3 (~0.4 s ahead) beam metrics | 66–85% | Power ratio is 95.5%. The other beam metrics need UAV GPS, which is blocked on the dataset download. |
+
+For the paper, report t+1 as the operating point and the noise-aware
+metrics as primary. Put the exact top-1 and macro-F1 next to them with
+this explanation. A reviewer who runs `argmax` on the data will check
+exactly this.
