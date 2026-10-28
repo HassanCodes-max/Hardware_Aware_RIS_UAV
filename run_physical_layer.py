@@ -13,6 +13,7 @@ import numpy as np
 from channel import estimate_cascaded_channel, link_metrics, ris_element_channels
 from config import SimulationConfig
 from hardware import hardware_aware_phases
+from parametric_estimation import cascaded_channel, random_training, refine_position, send_pilots
 from trajectory import straight_line_trajectory
 
 RESULTS_DIR = Path(__file__).resolve().parent / "results"
@@ -228,6 +229,60 @@ def closed_loop_study(
     return rows
 
 
+def parametric_study(
+    config: SimulationConfig,
+    distances_m: tuple = (20.0, 50.0, 100.0),
+    gps_error_std_m: float = 5.0,
+    budgets: tuple = ((16, 256), (64, 256), (64, 1024)),
+    trials: int = 5,
+) -> list[dict]:
+    """
+    Position-parametric estimation vs per-element LMMSE, by pilot budget.
+
+    Parametric: coarse GPS prior (gps_error_std_m per axis), M random
+    patterns of L pilot symbols, direction refinement, hardware-aware
+    phases from g(p_hat). Compared with GPS-only control and with
+    per-element LMMSE using all N patterns.
+    """
+
+    rows = []
+    for distance in distances_m:
+        position = np.array([distance, 0.0, 30.0])
+        perfect_db = link_metrics(
+            position, config, hardware_aware_phases(cascaded_channel(position, config), config)
+        )["sndr_db"]
+
+        def configure_from(estimate_position):
+            return link_metrics(
+                position, config,
+                hardware_aware_phases(cascaded_channel(estimate_position, config), config),
+            )["sndr_db"]
+
+        rngs = [np.random.default_rng(100 + trial) for trial in range(trials)]
+        priors = [position + rng.normal(0.0, gps_error_std_m, 3) for rng in rngs]
+
+        row = {
+            "x_m": distance,
+            "perfect_csi_sndr_db": round(perfect_db, 2),
+            "gps_only_sndr_db": round(float(np.mean([configure_from(p) for p in priors])), 2),
+        }
+
+        for patterns, symbols in budgets:
+            sndr = []
+            for rng, prior in zip(rngs, priors):
+                received, nominal = send_pilots(
+                    position, random_training(patterns, config, rng), config, symbols, rng
+                )
+                sndr.append(configure_from(refine_position(prior, received, nominal, config)))
+            row[f"parametric_M{patterns}_L{symbols}_sndr_db"] = round(float(np.mean(sndr)), 2)
+            row[f"parametric_M{patterns}_L{symbols}_pilot_symbols"] = patterns * symbols
+
+        row["lmmse_N_L4096_pilot_symbols"] = config.ris_elements * 4096
+        rows.append(row)
+
+    return rows
+
+
 def main() -> None:
     """Run every experiment and write one JSON file."""
 
@@ -250,6 +305,7 @@ def main() -> None:
         "ris_sizing_availability": ris_sizing(config),
         "channel_estimation": estimation_study(config),
         "closed_loop_estimate_then_control": closed_loop_study(config),
+        "parametric_estimation": parametric_study(config),
     }
 
     RESULTS_DIR.mkdir(exist_ok=True)
