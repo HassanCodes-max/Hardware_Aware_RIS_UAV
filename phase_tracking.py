@@ -194,6 +194,8 @@ if __name__ == "__main__":
         / "phase_tracking.csv"
     )
 
+    result_file.parent.mkdir(parents=True, exist_ok=True)
+
     run_phase_tracking(result_file)
 
     print(

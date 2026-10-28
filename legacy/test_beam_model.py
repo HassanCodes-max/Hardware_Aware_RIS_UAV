@@ -3,7 +3,8 @@ from pathlib import Path
 import joblib
 import pandas as pd
 
-PROJECT_ROOT = Path(__file__).resolve().parent
+# Legacy scripts live in legacy/; data and model paths are at the repo root.
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 DATASET_PATH = (
     PROJECT_ROOT

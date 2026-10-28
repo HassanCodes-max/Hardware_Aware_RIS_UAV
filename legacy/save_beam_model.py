@@ -6,7 +6,8 @@ import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 
-PROJECT_ROOT = Path(__file__).resolve().parent
+# Legacy scripts live in legacy/; data and model paths are at the repo root.
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 DATASET_PATH = (
     PROJECT_ROOT
