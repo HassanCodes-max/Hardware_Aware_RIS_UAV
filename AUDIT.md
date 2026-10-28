@@ -210,7 +210,7 @@ paper and for reviewers.
 | Exact top-1 vs full-sweep ground truth | 98.1% [97.2, 98.7] | ✅ |
 | Macro-F1, all 56 classes | 0.890 [0.853, 0.929] | ✅ |
 | Within measurement noise (blind prediction) | 95.6% | ✅ |
-| Within noise, class-balanced (blind prediction) | 89.3% | ✅ |
+| Within noise, class-balanced (blind prediction) | 89.2% | ✅ |
 | Top-3 / ±1 beam / power ratio (blind prediction) | 95.1 / 91.5 / 98.9% | ✅ |
 | Tracking: array gain at 10 / 100 / 500 ms | 100.0 / 99.98 / 99.3% | ✅ |
 | Channel estimation: % of perfect-CSI SNR | 96.5–100% | ✅ |
