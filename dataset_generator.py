@@ -37,7 +37,12 @@ def trajectory_metadata(
 def generate_designed_trajectories(
     config: SimulationConfig,
 ) -> list[tuple[int, str, Trajectory]]:
-    """Generate manually designed trajectory scenarios."""
+    """
+    Generate manually designed trajectory scenarios.
+
+    Every scenario stays in front of the facade-mounted RIS (x > 0), the
+    half-space it can serve.
+    """
 
     trajectories = []
 
@@ -57,7 +62,7 @@ def generate_designed_trajectories(
         (
             "straight_negative_x",
             straight_line_custom_trajectory(
-                initial_position_m=(100.0, 0.0, 25.0),
+                initial_position_m=(260.0, 0.0, 25.0),
                 speed_m_s=8.0,
                 direction=(-1.0, 0.0, 0.0),
                 duration_s=config.flight_duration_s,
@@ -67,7 +72,7 @@ def generate_designed_trajectories(
         (
             "straight_y",
             straight_line_custom_trajectory(
-                initial_position_m=(0.0, -50.0, 30.0),
+                initial_position_m=(40.0, -180.0, 30.0),
                 speed_m_s=12.0,
                 direction=(0.0, 1.0, 0.0),
                 duration_s=config.flight_duration_s,
@@ -77,7 +82,7 @@ def generate_designed_trajectories(
         (
             "diagonal",
             straight_line_custom_trajectory(
-                initial_position_m=(-40.0, -40.0, 25.0),
+                initial_position_m=(20.0, -40.0, 25.0),
                 speed_m_s=12.0,
                 direction=(1.0, 1.0, 0.1),
                 duration_s=config.flight_duration_s,
@@ -107,7 +112,7 @@ def generate_designed_trajectories(
         (
             "circle",
             circular_trajectory(
-                center_m=(40.0, 0.0, 30.0),
+                center_m=(60.0, 0.0, 30.0),
                 radius_m=40.0,
                 altitude_m=30.0,
                 angular_speed_rad_s=10.0 / 40.0,
@@ -118,7 +123,7 @@ def generate_designed_trajectories(
         (
             "helix",
             helical_trajectory(
-                center_m=(30.0, 20.0, 20.0),
+                center_m=(60.0, 20.0, 20.0),
                 radius_m=35.0,
                 initial_altitude_m=20.0,
                 vertical_speed_m_s=1.0,
@@ -134,7 +139,7 @@ def generate_designed_trajectories(
                     (20.0, 0.0, 20.0),
                     (80.0, 20.0, 25.0),
                     (40.0, 80.0, 35.0),
-                    (-20.0, 40.0, 30.0),
+                    (20.0, 60.0, 30.0),
                     (20.0, 0.0, 20.0),
                 ],
                 speed_m_s=10.0,

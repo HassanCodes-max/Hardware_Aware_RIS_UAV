@@ -291,6 +291,81 @@ def load_gps_csv(
     )
 
 
+SCENARIO23_KINEMATIC_COLUMNS = [
+    "unit2_altitude",
+    "unit2_speed",
+    "unit2_distance",
+    "unit2_height",
+    "unit2_x-speed",
+    "unit2_y-speed",
+    "unit2_z-speed",
+    "unit2_pitch",
+    "unit2_roll",
+]
+
+
+def _read_values(
+    path: Path,
+) -> np.ndarray:
+    """Read every number in a small DeepSense text file, whatever its layout."""
+
+    text = path.read_text().replace(",", " ").replace("[", " ").replace("]", " ")
+
+    return np.array([float(token) for token in text.split()])
+
+
+def load_scenario23_kinematics(
+    scenario_root: Path,
+    manifest: pd.DataFrame,
+) -> pd.DataFrame | None:
+    """
+    Load per-sample UAV kinematics from the full Scenario 23 download.
+
+    Returns None when the unit2/ folder is absent (the repository only
+    ships the beam CSV). Otherwise returns one row per manifest row with
+    the UAV position relative to the BS (east/north metres), its bearing
+    and elevation seen from the BS, and the raw kinematic channels.
+    """
+
+    if not (scenario_root / "unit2").exists():
+        return None
+
+    def resolve(relative: str) -> Path:
+        return scenario_root / str(relative).replace("./", "")
+
+    bs_location = _read_values(resolve(manifest["unit1_loc"].iloc[0]))[:2]
+    uav_locations = np.stack([
+        _read_values(resolve(path))[:2] for path in manifest["unit2_loc"]
+    ])
+
+    east_m, north_m = latitude_longitude_to_local_xy(
+        np.concatenate([[bs_location[0]], uav_locations[:, 0]]),
+        np.concatenate([[bs_location[1]], uav_locations[:, 1]]),
+    )
+    east_m, north_m = east_m[1:], north_m[1:]
+
+    kinematics = pd.DataFrame({
+        "uav_east_m": east_m,
+        "uav_north_m": north_m,
+        "uav_bearing_rad": np.arctan2(north_m, east_m),
+    })
+
+    for column in SCENARIO23_KINEMATIC_COLUMNS:
+        if column in manifest.columns:
+            kinematics[column] = [
+                _read_values(resolve(path))[0] for path in manifest[column]
+            ]
+
+    if "unit2_height" in kinematics:
+        horizontal_m = np.hypot(east_m, north_m)
+        kinematics["uav_elevation_rad"] = np.arctan2(
+            kinematics["unit2_height"].to_numpy(),
+            np.maximum(horizontal_m, 1e-3),
+        )
+
+    return kinematics
+
+
 def load_scenario23(
     csv_path: Path,
 ) -> pd.DataFrame:

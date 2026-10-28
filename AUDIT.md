@@ -192,14 +192,14 @@ itself. Forcing those to 85% would mean leaking labels again.
 
 | Metric | Value now | ≥ 85%? | Why |
 |---|---|---|---|
-| Beam: received-power ratio (t+1) | 98.6% | ✅ | |
-| Beam: top-3 accuracy (t+1) | 94.9% | ✅ | |
-| Beam: ±1-beam accuracy (t+1) | 89.6% | ✅ | |
-| Beam: power ratio / top-3 (t+3) | 94.4% / 84.2% | ✅ / ≈ | |
-| Tracking: array gain at 10 / 100 / 500 ms | 99.9 / 99.8 / 98.3% | ✅ | |
+| Beam: received-power ratio (t+1, GRU soft target) | 98.9% | ✅ | |
+| Beam: top-3 accuracy (t+1, GRU soft target) | 95.1% | ✅ | |
+| Beam: ±1-beam accuracy (t+1, GRU soft target) | 91.5% | ✅ | |
+| Beam: power ratio / top-3 (t+3, GRU soft target) | 95.5% / 84.8% | ✅ / ≈ | GPS features expected to push top-3 past 85% |
+| Tracking: array gain at 10 / 100 / 500 ms (Kalman) | 100.0 / 99.98 / 99.3% | ✅ | |
 | Link availability, 96×96 RIS, realistic hardware | 100% | ✅ | Needs a 24 cm RIS (64×64 reaches only 57%) |
-| Beam: top-1 accuracy (t+1) | 70.4% | ❌ | In 75% of sweeps the best two beams are within **0.25 dB**, and adjacent 90% of the time. The "correct" beam is measurement noise. |
-| Beam: macro-F1 | 0.41 | ❌ | Rare beams appear in only a few of the 35 sequences, so held-out sequences contain beams the model barely saw. |
+| Beam: top-1 accuracy (t+1) | 70.9% | ❌ | In 75% of sweeps the best two beams are within **0.25 dB**, and adjacent 90% of the time. The "correct" beam is measurement noise. |
+| Beam: macro-F1 | 0.45 | ❌ | Rare beams appear in only a few of the 35 sequences, so held-out sequences contain beams the model barely saw. |
 
 Top-1 can probably be raised with UAV GPS (H3) and a sequence model. 85%
 top-1 isn't a realistic goal on this data, and we should say so in the

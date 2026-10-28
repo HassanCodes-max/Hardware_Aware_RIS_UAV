@@ -66,3 +66,24 @@ def test_scenario23_label_is_argmax_of_power():
     beams = pd.read_csv(DATA / "scenario23_beam_dataset.csv")
     power = beams[[f"power_{i}" for i in range(1, 65)]].to_numpy()
     assert (power.argmax(axis=1) + 1 == beams["beam_label"].to_numpy()).all()
+
+
+def test_kinematics_loader_reads_unit2_files(tmp_path):
+    from public_data_adapter import load_scenario23_kinematics
+
+    (tmp_path / "unit1").mkdir()
+    (tmp_path / "unit2").mkdir()
+    (tmp_path / "unit1" / "bs.txt").write_text("33.0000\n-111.0000\n")
+    rows = []
+    for i, (lat, lon) in enumerate([(33.0001, -111.0), (33.0, -110.9999)]):
+        (tmp_path / "unit2" / f"loc{i}.txt").write_text(f"{lat} {lon}")
+        (tmp_path / "unit2" / f"h{i}.txt").write_text("[20.0]")
+        rows.append({"unit1_loc": "./unit1/bs.txt", "unit2_loc": f"./unit2/loc{i}.txt",
+                     "unit2_height": f"./unit2/h{i}.txt"})
+
+    kinematics = load_scenario23_kinematics(tmp_path, pd.DataFrame(rows))
+
+    assert kinematics["uav_north_m"].iloc[0] > 10.0
+    assert kinematics["uav_east_m"].iloc[1] > 8.0
+    assert np.allclose(kinematics["unit2_height"], 20.0)
+    assert (kinematics["uav_elevation_rad"] > 0).all()
