@@ -103,3 +103,16 @@ def test_parametric_estimator_recovers_perfect_csi_gain():
         return link_metrics(position, config, hardware_aware_phases(cascaded_channel(p, config), config))["sndr_db"]
 
     assert sndr(estimate) > sndr(position) - 0.5
+
+
+def test_measure_and_pick_keeps_strongest_measured_beam():
+    from beam_training_overhead import adaptive_sizes, measure_and_pick
+
+    power = np.array([[1.0, 5.0, 3.0, 9.0], [4.0, 1.0, 2.0, 3.0]])
+    ranking = np.array([[2, 1, 0, 3], [3, 2, 0, 1]])
+
+    picked = measure_and_pick(ranking, np.array([2, 3]), power)
+
+    # Row 0 measures beams 2 and 1 only, so the global best (3) is out of reach.
+    assert picked.tolist() == [1, 0]
+    assert adaptive_sizes(np.array([[0.6, 0.3, 0.1, 0.0]]), 0.85).tolist() == [2]
