@@ -26,8 +26,9 @@ show that exact blind beam prediction is bounded at 79% top-1 by measurement noi
 AI-assisted reduced beam training scheme with a learned beam-tie graph. Given full-sweep history it
 selects the exact optimal beam 99.3% of the time at a 140 ms horizon (macro-F1 0.961 over all 56 beam
 classes) and 99.1% at 0.4 s. Replayed in closed loop, where the system knows only the beams it measured,
-tie-graph tracking selects the exact optimal beam 97.2% of the time (99.2% within measurement noise)
-with 1.05 ms of beam training per decision instead of 5 ms, under sequence-level cross-validation.
+tie-graph tracking selects the exact optimal beam 97.2–99.3% of the time with 1.05–1.31 ms of beam
+training per decision instead of 5 ms. Ten deep sequence models trained on the same measured-only data
+do not beat the tie graph at equal measurement budget, under sequence-level cross-validation.
 
 **Index Terms**: mmWave, sub-THz, UAV, reconfigurable intelligent surface, beam training, beam
 tracking, channel estimation, hardware impairments, deep learning.
@@ -64,8 +65,9 @@ are nearly identical, so random splits leak.
    works at realistic sensor precision once the right metric is used (Sec. IV, VI-C).
 4. On real 60 GHz measurements, a proof that exact blind beam prediction is noise-limited, a GRU trained
    on a soft power target, a learned beam-tie graph, and an AI-assisted reduced beam training scheme
-   meeting ≥ 95% exact top-1 and macro-F1, conformal shortlists calibrated to a target accuracy, and a
-   closed-loop replay of every flight in which the system knows only what it measured, evaluated with
+   meeting ≥ 95% exact top-1 and macro-F1, conformal shortlists calibrated to a target accuracy, a
+   closed-loop replay of every flight in which the system knows only what it measured, and a matched-budget
+   comparison of ten deep sequence models against the tie graph in that loop, evaluated with
    sequence-level cross-validation and bootstrap confidence intervals (Sec. V, VI-D).
 
 ---
@@ -259,6 +261,21 @@ on beam loss (best measured power more than 3 dB below the current beam's last v
 spectral efficiency over each interval is (1 − T_train/T) times the mean of log2(1 + SNR₀ p_used/p_best)
 at the interval's start and end, using measured powers, so beam ageing is measured, not modelled. The
 dataset's powers are unitless, so SNR₀, the best beam's SNR, is a nominal operating point.
+
+**Learned closed-loop tracking.** To test whether a learned model helps once only measured beams are
+known, we log each flight under the tie-graph tracker (±1 window, four partners, full sweep every 8
+steps). Each logged step holds the measured beams' power in dB relative to the strongest measured beam,
+−20 dB for unmeasured beams, the measurement mask, a full-sweep flag and the time gap. A model reads
+the last W steps and predicts the next step's best beam; the training target is the next recorded full
+sweep (soft, 0.5 dB temperature, or hard), available offline only. In deployment the tracker measures
+its usual set plus the model's top k ∈ {2, 4} beams not already in it, and the model's next input is
+built from what was measured. The baseline at the same budget is the tracker with k more tie partners.
+We compare a GRU, an LSTM, a dilated temporal CNN, a Transformer encoder and an MLP over the window, and
+GRU variants in hidden size (64, 128), learning rate (10⁻³, 3·10⁻⁴), window (4, 8, 16) and target
+(soft, hard); all are trained with AdamW, batch 128, early stopping on validation flights. The headline
+configuration is selected by top-4 accuracy on validation flights inside the training folds. Inference
+latency is the median of 300 batch-1 forward passes on one thread of a laptop CPU, in fp32 and with
+dynamic int8 quantization; it is not a measurement on embedded hardware.
 
 ---
 
@@ -472,6 +489,41 @@ uses the best beam with no training time, at nominal best-beam SNR of 0 / 10 / 2
 | Window ±1, loss-triggered sweeps only | 75.5 | 83.2 | 0.35 | 92.9 / 95.0 / 96.8 |
 | Window ±1 + 6 tie partners, loss-triggered only | 96.1 | 96.9 | 0.64 | 98.5 / 98.9 / 99.2 |
 
+**Learned tracking in the loop** (Table X, Fig. 6). At equal budget, every learned model is below the
+tie graph. With two extra beams, the tracker with six tie partners reaches 99.16% exact top-1 at 1.18 ms,
+while the ten models reach 98.17–98.71%; with four extra beams, 99.28% against 98.59–98.83%. The models
+differ from each other by at most 0.6 points, so architecture and the training settings we varied matter
+little. The configuration selected on validation flights (the Transformer, 91.9% validation top-4) is not
+better on test than the others. The extra beams of every model still help over the four-partner tracker
+(97.15%), so the models learn useful structure, but the tie graph already captures it. For latency, the
+MLP is fastest (0.11 ms fp32); dynamic int8 quantization made every model slower on this CPU and is not
+supported for the Transformer encoder in our PyTorch version. Inference runs between steps, off the
+beam-training critical path.
+
+*Table X. Learned closed-loop tracking (held-out flights, pooled over folds). Exact top-1 with the tracker
+(four partners) plus k model beams; tie-graph baseline at the same budget: 99.16% (k = 2, 1.18 ms) and
+99.28% (k = 4, 1.31 ms). Inference: median batch-1 latency, one laptop CPU thread.*
+
+| Model | Val. top-4 (%) | Exact top-1, k = 2 (%) | Exact top-1, k = 4 (%) | fp32 (ms) | int8 (ms) |
+|---|---|---|---|---|---|
+| Tie graph, +k partners (no learning) | – | **99.16** | **99.28** | – | – |
+| GRU, h = 128 | 90.3 | 98.37 | 98.71 | 0.54 | 0.88 |
+| LSTM, h = 128 | 89.8 | 98.51 | 98.78 | 0.62 | 1.24 |
+| Temporal CNN, h = 128 | 89.8 | 98.47 | 98.75 | 0.67 | 0.80 |
+| Transformer, h = 64 (selected) | 91.9 | 98.39 | 98.71 | 1.00 | n/a |
+| MLP, h = 256 | 90.5 | 98.48 | 98.81 | **0.11** | 0.33 |
+| GRU, h = 64 | 89.4 | 98.24 | 98.68 | 0.43 | 0.87 |
+| GRU, lr = 3·10⁻⁴ | 90.0 | 98.24 | 98.70 | 0.50 | 0.92 |
+| GRU, W = 4 | 90.3 | 98.17 | 98.59 | 0.33 | 0.64 |
+| GRU, W = 16 | 89.3 | 98.29 | 98.64 | 0.91 | 1.67 |
+| GRU, hard target | 91.2 | 98.71 | 98.83 | 0.56 | 1.04 |
+
+![Fig. 6](figures/fig_closed_loop.png)
+
+*Fig. 6. Closed loop. Left: exact top-1 versus mean beam-training latency for every policy (log scale);
+dashed: 95%. Right: at equal budget, extra beams chosen by the tie graph (line) versus by each of the
+ten learned models (squares).*
+
 ---
 
 ## VII. Discussion
@@ -491,9 +543,10 @@ the largest system-level effects are the RIS sizes needed for coverage: 2.25× t
 **Learning where it helps.** On power sweeps alone the learned gain over persistence is modest at t + 1
 and clear at t + 3 (86.0% vs 78.1% within noise). In reduced beam training, the largest single gain
 comes from a simple learned structure, the beam-tie graph, rather than from the sequence model. The GRU
-then reduces the beams measured at t + 3. In closed loop the GRU cannot yet be used, because it expects
-full-sweep history; a sequence model trained on the sparse measurements a tracker actually has is the
-natural next step. The soft
+then reduces the beams measured at t + 3. In closed loop, where only measured beams are known, ten deep
+sequence models trained on those measurements did not beat the tie graph at equal budget (Table X).
+On this dataset, the useful structure is which beams tie, and a co-occurrence count captures it; we
+report this negative result because it bounds what learning adds once measurement is cheap. The soft
 target and beam-axis augmentation matter more than the architecture. Logit adjustment for the class
 imbalance [19] lowered every metric because the beam distribution differs between flights.
 
@@ -516,10 +569,11 @@ elements at 60 GHz, and D-band transceiver limits push the 140 GHz panel to 32 c
 estimator matches perfect channel knowledge with 64× fewer pilots;
 Kalman-based prediction preserves 99.3% of the array gain at 500 ms latency; and AI-assisted reduced beam
 training with a learned beam-tie graph selects the exact optimal beam 99.3% of the time given full-sweep
-history and 97.2% in a closed-loop replay of every flight, with 1.05 ms of beam training per decision
-instead of 5 ms, with all reported metrics evaluated under sequence-level cross-validation. Future work will add UAV position to beam
-prediction, measured hardware coefficients, and a sequence model trained on the sparse measurements of the
-closed loop.
+history and 97.2–99.3% in a closed-loop replay of every flight, with 1.05–1.31 ms of beam training per
+decision instead of 5 ms; deep sequence models trained on measured-only data did not improve on it at
+equal budget. All reported metrics are evaluated under sequence-level cross-validation. Future work will add UAV position and camera
+input to beam prediction (the full Scenario 23 release), measured hardware coefficients, and paired
+per-flight significance tests between tracking policies.
 
 ---
 
@@ -612,4 +666,5 @@ NeurIPS*, vol. 33, 2020.
 | Sec. VI-D, Table VIII, Fig. 4 | `beam_training_overhead.py` (after `beam_sequence_model.py`) | `results/beam_training_overhead.json` |
 | Sec. VI-D, conformal shortlists | `conformal_beam_training.py` (after `beam_sequence_model.py`) | `results/conformal_beam_training.json` |
 | Sec. VI-D, Table IX | `closed_loop_beam_tracking.py` | `results/closed_loop_beam_tracking.json` |
+| Sec. VI-D, Table X, Fig. 6 | `closed_loop_learned_tracking.py` | `results/closed_loop_learned_tracking.json` |
 | All figures | `make_figures.py` | `paper/figures/` |

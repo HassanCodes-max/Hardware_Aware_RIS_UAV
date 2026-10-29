@@ -34,6 +34,7 @@ python -m pytest tests          # 14 regression tests, a few seconds
 | `beam_sequence_model.py` | GRU over 8 sweeps (hard label vs soft power target), same protocol and metrics | `beam_sequence_metrics.{json,csv}` | ~15 min (CPU) |
 | `beam_training_overhead.py` | Two-stage AI-assisted beam training: shortlist K beams from the past, measure them, keep the best. Scored against the full 64-beam ground truth with nested-CV operating points and sequence-bootstrap CIs (run after `beam_sequence_model.py`) | `beam_training_overhead.json`, `*_curves.csv` | ~3 min |
 | `conformal_beam_training.py` | Conformal beam shortlists calibrated on held-out flights to a target exact top-1 (90–99%); rank and APS scores (run after `beam_sequence_model.py`) | `conformal_beam_training.{json,csv}` | ~1 min |
+| `closed_loop_learned_tracking.py` | Ten deep models trained on measured-only logs, run in the loop, against the tie graph at equal budget; CPU inference latency fp32/int8 | `closed_loop_learned_tracking.{json,csv}` | ~40 min (CPU) |
 | `closed_loop_beam_tracking.py` | Replays every flight with policies that know only the beams they measured (window + learned tie partners, periodic or loss-triggered full sweeps); exact top-1, latency, effective spectral efficiency | `closed_loop_beam_tracking.{json,csv}`, `*_flights.csv` | ~1 min |
 | `tracking_eval.py` | Position predictors (persistence, CV, Kalman, learned) scored by delivered array gain at 10/100/500 ms horizons | `tracking_metrics.{json,csv}` | ~1 min |
 | `main.py` | Per-time-step trace along the default flight | `simulation.csv` | ~4 s |
@@ -189,8 +190,14 @@ nominal best-beam SNRs.
 - At this testbed's 142 ms step a full sweep is only 3.5% of airtime, so
   throughput gains are a few percent. The gain is in latency per
   decision: about 1 ms instead of 5 ms.
-- The GRU can't yet run in this loop: it needs full-sweep history. A GRU
-  trained on masked (measured-only) sweeps is the next step.
+- **Learned models in the loop** (`closed_loop_learned_tracking.py`, paper
+  Table X / Fig. 6): ten models (GRU, LSTM, TCN, Transformer, MLP; GRU
+  hidden size, learning rate, window 4/8/16, soft/hard target) trained on
+  measured-only logs add k model beams to the tracker. At equal budget the
+  tie graph wins: 99.16% / 99.28% exact top-1 with +2 / +4 tie partners
+  against 98.17–98.71% / 98.59–98.83% for the models. The
+  validation-selected Transformer is no better on test. MLP inference
+  0.11 ms (fp32, one laptop CPU thread); int8 was slower for every model.
 
 **Predictive RIS tracking** (32×32 RIS, 2 cm position noise, held-out trajectory types)
 
@@ -329,6 +336,14 @@ GPS alone can't steer a 32×32 RIS: 5 m of error is wider than the beam.
 - `adaptive_pilot_plan` / `estimate_from_prior`: the pilot budget comes
   from the prior's angular uncertainty and the predicted SNR. The margin
   (128) was chosen on separate seeds from the reported runs.
+
+### 2026-10-30: Major update 11 (learned models in the loop, paper v3 figures)
+
+- `closed_loop_learned_tracking.py`: ten models trained on measured-only
+  observations. None beats the tie graph at equal budget (negative result).
+- Paper: Fig. 5 (conformal), Fig. 6 and Table X (closed loop, learned vs
+  tie graph); tables no longer split across pages; references [2], [7],
+  [23], [24] confirmed.
 
 ### 2026-10-30: Major update 10 (conformal sets, closed loop)
 

@@ -212,9 +212,60 @@ def figure_conformal() -> None:
     save(figure, "fig_conformal.png")
 
 
+def figure_closed_loop() -> None:
+    """Closed loop: all policies (left) and the equal-budget learned-vs-graph comparison (right)."""
+
+    trackers = pd.DataFrame(json.loads((RESULTS / "closed_loop_beam_tracking.json").read_text())["summary"])
+    trackers = trackers[~trackers["policy"].str.startswith("genie")]
+    learned = pd.read_csv(RESULTS / "closed_loop_learned_tracking.csv")
+    partners = learned[learned["config"].str.startswith("tracker")].sort_values("beams_mean")
+    models = learned[~learned["config"].str.startswith("tracker")]
+
+    figure, (overview, zoom) = plt.subplots(1, 2, figsize=(COLUMN_WIDTH_IN * 2, 2.5))
+
+    full = trackers["policy"].str.startswith("full sweep")
+    overview.scatter(trackers.loc[full, "latency_ms_mean"], 100 * trackers.loc[full, "exact_top1"],
+                     color=GREY, marker="D", s=22, zorder=3, label="Full sweep every step")
+    overview.scatter(trackers.loc[~full, "latency_ms_mean"], 100 * trackers.loc[~full, "exact_top1"],
+                     color=BLUE, marker="o", s=18, zorder=3, label="Window / tie-graph trackers")
+    overview.scatter(partners["latency_ms_mean"], 100 * partners["exact_top1"], color=BLUE, marker="o",
+                     s=18, zorder=3)
+    overview.scatter(models["latency_ms_mean"], 100 * models["exact_top1"], color=ORANGE, marker="s",
+                     s=12, zorder=2, label="Tracker + learned beams")
+    overview.set_xscale("log")
+    overview.set_xticks([0.3, 0.5, 1, 2, 5])
+    overview.set_xticklabels(["0.3", "0.5", "1", "2", "5"])
+    overview.set_ylim(70, 101)
+    overview.set_xlabel("Mean beam-training latency per decision (ms)")
+    overview.set_ylabel("Exact top-1, closed loop (%)")
+    target_line(overview, 95)
+    overview.texts[-1].set_text(" 95%")
+    overview.legend(loc="lower right", fontsize=6.5)
+
+    # Equal budget: x = beams measured; extra beams are either tie partners or model picks.
+    zoom.plot(partners["beams_mean"], 100 * partners["exact_top1"], color=BLUE, linewidth=1.5, marker="o",
+              markersize=5, zorder=3, label="Tracker, 4 / 6 / 8 tie partners")
+    for extra in sorted(models["extra_beams"].unique()):
+        group = models[models["extra_beams"] == extra].reset_index(drop=True)
+        offsets = np.linspace(-0.12, 0.12, len(group))
+        zoom.scatter(group["beams_mean"] + offsets, 100 * group["exact_top1"], color=ORANGE, marker="s", s=14,
+                     zorder=2, label="Tracker + learned beams (10 models)" if extra == 2 else None)
+    zoom.set_xticks(partners["beams_mean"].round(1))
+    zoom.set_xticklabels([f"{b:.1f}\n({lat:.2f} ms)" for b, lat in
+                          zip(partners["beams_mean"], partners["latency_ms_mean"])])
+    zoom.set_xlabel("Beams measured per decision (latency)")
+    zoom.set_ylabel("Exact top-1, closed loop (%)")
+    zoom.set_ylim(96.5, 99.8)
+    zoom.legend(loc="lower right", fontsize=6.5)
+
+    figure.tight_layout()
+    save(figure, "fig_closed_loop.png")
+
+
 def main() -> None:
     figure_beam_training()
     figure_conformal()
+    figure_closed_loop()
     figure_tracking()
     figure_impairments()
     figure_ris_sizing()
