@@ -67,3 +67,17 @@ def test_graph_expanded_ranking_adds_partners_after_the_first_beams():
 
     assert list(expanded[0, :3]) == [28, 27, 38]
     assert sorted(expanded[0]) == list(range(BEAMS))
+
+
+def test_conformal_threshold_and_aps_sets():
+    from conformal_beam_training import aps_set_sizes, conformal_threshold
+
+    # 19 calibration scores 1..19: the ceil(20 * 0.9) = 18th smallest is 18.
+    assert conformal_threshold(np.arange(1, 20), 0.10) == 18
+    assert conformal_threshold(np.arange(1, 5), 0.01) == np.inf
+
+    probabilities = np.zeros((1, BEAMS))
+    probabilities[0, :3] = [0.6, 0.3, 0.1]
+    ranking = np.arange(BEAMS)[None, :]
+    assert aps_set_sizes(probabilities, ranking, 0.5)[0] == 1
+    assert aps_set_sizes(probabilities, ranking, 0.85)[0] == 2
