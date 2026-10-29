@@ -81,7 +81,7 @@ waypoint paths, all in front of the panel.
 
 For element n at distance d, the BS→RIS and RIS→UAV coefficients are
 
-h₁[n] = √G_BS · (λ / 4πd₁ₙ) · e^(−j2πd₁ₙ/λ) · a(d₁ₙ) · √(G_e cos^q θ₁ₙ),   (1)
+h₁[n] = √G_BS · (λ / 4πd₁ₙ) · e^(−j2πd₁ₙ/λ)   · a(d₁ₙ) · √(G_e cos^q θ₁ₙ),   (1)
 
 and likewise h₂[n] with the UAV gain G_UAV, where a(d) = 10^(−γd/20) is the gaseous-absorption amplitude
 with γ from the ITU-R P.676-13 line-by-line model (44 O₂ and 35 H₂O lines) at 1013.25 hPa, 288.15 K and
@@ -233,31 +233,9 @@ With ideal hardware the SNR is 15.8 dB at 20 m and 8.8 dB at 50 m. At 50 m the c
 **7.83 dB** (Fig. 1): amplitude–phase coupling 5.51 dB, PA nonlinearity 1.46 dB, S11 mismatch 0.92 dB,
 2-bit quantization 0.91 dB and phase noise 0.03 dB.
 
-**Phase resolution and coupling strength.** Coupling-aware selection (Sec. III-A) gains more as more
-realisable states become available: 0.55, 0.92 and 1.01 dB at 2, 3 and 4 bits, and nothing at 1 bit
-(−0.06 dB). No measured coupling curve for a 60 GHz element is available to us, so we sweep its strength
-(Table I-a). The total penalty ranges from 2.9 dB without coupling to 7.8 dB at β_min = 0.2; the
-conclusions below hold across this range, and the gain of coupling-aware control shrinks as coupling
-weakens.
-
-*Table I-a. SNDR penalty vs coupling strength, UAV at 50 m, 2-bit phases.*
-
-| β_min | 0.2 | 0.4 | 0.6 | 0.8 | 1.0 (no coupling) |
-|---|---|---|---|---|---|
-| Penalty, naive control (dB) | 7.83 | 6.22 | 4.92 | 3.84 | 2.93 |
-| Penalty, coupling-aware (dB) | 7.28 | 5.98 | 4.83 | 3.80 | 2.90 |
-
 ![Fig. 1](figures/fig_impairment_ablation.png)
 
 *Fig. 1. SNDR penalty of each impairment alone and combined, UAV at 50 m.*
-
-Impairments change how large the RIS must be (Fig. 2). Over a 20 → 320 m flight, a 64×64 RIS gives 100%
-availability (SNDR ≥ 0 dB) with ideal hardware but only 57% with realistic hardware; a 96×96 RIS
-(24 cm) restores 100%. The hardware cost is therefore about 2.25× in element count.
-
-![Fig. 2](figures/fig_ris_sizing.png)
-
-*Fig. 2. Link availability over the flight versus RIS size.*
 
 **Note on the first draft.** Without antenna and element gains and with an 8×8 (2 cm) RIS, the SNR is
 −43.2 dB at 20 m, the value reported in our earlier draft; it reflects missing gains, not sub-THz
@@ -273,15 +251,37 @@ receives −115.9 dBm at 140 GHz at 50 m, and the N² law holds at both carriers
 | 32×32 | −78.2 | −91.8 |
 | 64×64 | −66.2 | −79.7 |
 
+**Phase resolution and coupling strength.** Coupling-aware selection (Sec. III-A) gains more as more
+realisable states become available: 0.55, 0.92 and 1.01 dB at 2, 3 and 4 bits, and nothing at 1 bit
+(−0.06 dB). No measured coupling curve for a 60 GHz element is available to us, so we sweep its strength
+(Table II). The total penalty ranges from 2.9 dB without coupling to 7.8 dB at β_min = 0.2; the
+conclusions below hold across this range, and the gain of coupling-aware control shrinks as coupling
+weakens.
+
+*Table II. SNDR penalty vs coupling strength, UAV at 50 m, 2-bit phases.*
+
+| β_min | 0.2 | 0.4 | 0.6 | 0.8 | 1.0 (none) |
+|---|---|---|---|---|---|
+| Naive control (dB) | 7.83 | 6.22 | 4.92 | 3.84 | 2.93 |
+| Coupling-aware (dB) | 7.28 | 5.98 | 4.83 | 3.80 | 2.90 |
+
+Impairments change how large the RIS must be (Fig. 2). Over a 20 → 320 m flight, a 64×64 RIS gives 100%
+availability (SNDR ≥ 0 dB) with ideal hardware but only 57% with realistic hardware; a 96×96 RIS
+(24 cm) restores 100%. The hardware cost is therefore about 2.25× in element count.
+
+![Fig. 2](figures/fig_ris_sizing.png)
+
+*Fig. 2. Link availability over the flight versus RIS size.*
+
 **60 vs 140 GHz at equal aperture.** With the same 8 cm panel (32×32 at 60 GHz, 75×75 at 140 GHz) and the
 same transceiver hardware, 140 GHz performs slightly better (ideal SNR 16.6 vs 15.8 dB at 20 m; 47.5% vs
 34.4% availability): it avoids the 60 GHz oxygen line (0.69 vs 14.6 dB/km) and fits 5.5× more elements in
 the same area. With published D-band hardware (about 20 dBm PA saturation [20], hence 14 dBm average at
 6 dB back-off, and an LNA noise figure near 10 dB [21]) the link loses about 9 dB, and the RIS must grow
 to 32 cm (300×300 elements) for full availability with realistic impairments, against 24 cm at 60 GHz
-(Table I-b). At sub-THz, transceiver hardware, not propagation, sets the RIS size.
+(Table III). At sub-THz, transceiver hardware, not propagation, sets the RIS size.
 
-*Table I-b. Availability (%) over the flight, 140 GHz with D-band hardware, ideal / realistic RIS.*
+*Table III. Availability (%) over the flight, 140 GHz with D-band hardware, ideal / realistic RIS.*
 
 | RIS (aperture) | 75×75 (8 cm) | 150×150 (16 cm) | 225×225 (24 cm) | 300×300 (32 cm) |
 |---|---|---|---|---|
@@ -295,14 +295,14 @@ improving with pilot length (−11.1 dB at 20 m with 4096 symbols per pattern) a
 closed loop (estimate, configure, measure SNDR), the hardware-aware pipeline beats the naive one at
 every distance and pilot length, by 0.4–1.2 dB.
 
-Per-element estimation, however, scales poorly with range. The parametric estimator (Table II) reaches
+Per-element estimation, however, scales poorly with range. The parametric estimator (Table IV) reaches
 perfect-CSI SNDR to within 0.15 dB at 20–100 m with 64×1024 = 65k pilot symbols, against 4.2M for
 per-element LMMSE, which still falls 1.6 dB short at 100 m. A 5 m GPS prior alone is useless
-(−23 to −31 dB) because its error exceeds the beam width. With the adaptive budget (Table III), the
+(−23 to −31 dB) because its error exceeds the beam width. With the adaptive budget (Table V), the
 estimator delivers 96.5–100% of perfect-CSI SNR on average at every range and prior, and needs no pilots
 when the 100 ms Kalman prediction is used as prior.
 
-*Table II. SNDR (dB) from a 5 m GPS prior.*
+*Table IV. SNDR (dB) from a 5 m GPS prior.*
 
 | UAV at | Perfect CSI | GPS only | Parametric, 65k pilots | Per-element LMMSE, 4.2M pilots |
 |---|---|---|---|---|
@@ -310,7 +310,7 @@ when the 100 ms Kalman prediction is used as prior.
 | 50 m | 1.50 | −31.4 | 1.49 | 1.07 |
 | 100 m | −4.75 | −22.9 | −4.90 | −6.33 |
 
-*Table III. Adaptive parametric estimation: mean (worst of 10) % of perfect-CSI SNR, and pilot symbols.*
+*Table V. Adaptive parametric estimation: mean (worst of 10) % of perfect-CSI SNR, and pilot symbols.*
 
 | UAV at | GPS prior (5 m) | Kalman, 500 ms (31 cm) | Kalman, 100 ms (5 cm) |
 |---|---|---|---|
@@ -322,12 +322,12 @@ when the 100 ms Kalman prediction is used as prior.
 ### C. Predictive Tracking
 
 Every predictor shows a mean absolute phase error of 89–92°, the value an unaligned phase profile would
-give, yet the delivered gain (6) ranges from 63% to 100% (Table IV, Fig. 3). The phase-error metric
+give, yet the delivered gain (6) ranges from 63% to 100% (Table VI, Fig. 3). The phase-error metric
 therefore cannot rank controllers. Prediction matters at realistic latencies: at 500 ms the Kalman
 filter delivers 99.3% of the ideal gain (5th percentile 97.4%), the learned ridge predictor 98.8%,
 constant velocity 71.4% and persistence 63.0%. All predictors run in under 0.1 ms per step.
 
-*Table IV. Delivered array gain (%) and position RMSE (cm), held-out trajectories.*
+*Table VI. Delivered array gain (%) and position RMSE (cm), held-out trajectories.*
 
 | Horizon | Persistence | Constant velocity | Kalman CV | Ridge (learned) |
 |---|---|---|---|---|
@@ -341,14 +341,14 @@ constant velocity 71.4% and persistence 63.0%. All predictors run in under 0.1 m
 
 ### D. Beam Prediction on Scenario 23
 
-**Blind prediction** (Table V). At t + 1 (≈140 ms) the augmented GRU ensemble selects a beam within the
+**Blind prediction** (Table VII). At t + 1 (≈140 ms) the augmented GRU ensemble selects a beam within the
 0.25 dB noise margin 96.4% of the time (class-balanced 91.7%), has 96.1% top-3 accuracy, and delivers
 99.1% of the optimal received power. Its exact top-1 is 72.1% against the 79.0% oracle ceiling. At t + 3
 it reaches 86.0% within noise and 96.8% power ratio. Trained on hard labels, a single GRU falls below
 persistence at t + 3; the soft target makes it competitive, and augmentation with ensembling makes it
 the best model on every metric at both horizons, including blind macro-F1 at t + 3 (0.28 vs 0.26).
 
-*Table V. Blind beam prediction, GroupKFold over 35 sequences.*
+*Table VII. Blind beam prediction, GroupKFold over 35 sequences.*
 
 | Horizon | Model | Within noise | Balanced within noise | Top-3 | Power ratio | Exact top-1 | Macro-F1 |
 |---|---|---|---|---|---|---|---|
@@ -362,13 +362,13 @@ the best model on every metric at both horizons, including blind macro-F1 at t +
 | t+3 | GRU, soft target | 81.1 | 65.8 | 84.8 | 95.5 | 55.3 | 0.24 |
 | t+3 | **GRU ensemble, augmented** | **86.0** | **75.5** | **86.9** | **96.8** | **56.7** | **0.28** |
 
-**Reduced beam training** (Table VI, Fig. 4). Measuring a handful of predicted beams resolves the
+**Reduced beam training** (Table VIII, Fig. 4). Measuring a handful of predicted beams resolves the
 near-ties that blind prediction cannot. At t + 1, the GRU-ensemble + last-sweep shortlist selects the
 exact optimal beam 98.2% of the time with macro-F1 0.898 over all 56 classes, measuring 4 of 64 beams
 (6.3% of a full sweep); both 95% intervals lie above 0.85 (macro-F1 lower bound 0.864). The adaptive
 shortlist reaches 98.8% / 0.898 with 5.6 beams on average.
 
-*Table VI. Reduced beam training, nested-CV operating points, scored against the full-sweep ground
+*Table VIII. Reduced beam training, nested-CV operating points, scored against the full-sweep ground
 truth [95% CI over sequences].*
 
 | Horizon | Shortlist | Beams measured | Exact top-1 | Macro-F1 (56 classes) |
@@ -417,7 +417,7 @@ target and beam-axis augmentation matter more than the architecture. Logit adjus
 imbalance [19] lowered every metric because the beam distribution differs between flights.
 
 **Limitations.** Saleh and coupling coefficients are literature values, not measurements of a 60 GHz
-PA or RIS; Table I-a bounds the effect of the coupling strength. The obliquity exponent is assumed. The physical-layer results are simulated; the
+PA or RIS; Table II bounds the effect of the coupling strength. The obliquity exponent is assumed. The physical-layer results are simulated; the
 beam-prediction results use power sweeps only, because the UAV GPS files of Scenario 23 were not
 available to us at the time of writing. The t + 3 macro-F1 is close to 0.85 and its interval includes
 it. The D-band transceiver values are representative published figures, not a specific design.
@@ -510,9 +510,9 @@ amplifier with NF down to 10 dB was found but its full citation needs checking.]
 
 | Item | Script | Output |
 |---|---|---|
-| Sec. VI-A, Fig. 1–2, Table I | `run_physical_layer.py` | `results/physical_layer_metrics.json` |
-| Sec. VI-B, Tables II–III | `run_physical_layer.py` (`parametric_study`, `adaptive_study`, `closed_loop_study`) | same |
-| Sec. VI-C, Table IV, Fig. 3 | `tracking_eval.py` | `results/tracking_metrics.json` |
-| Sec. VI-D, Table V | `beam_prediction.py`, `beam_sequence_model.py` | `results/beam_*_metrics.csv` |
-| Sec. VI-D, Table VI, Fig. 4 | `beam_training_overhead.py` (after `beam_sequence_model.py`) | `results/beam_training_overhead.json` |
+| Sec. VI-A, Fig. 1–2, Tables I–III | `run_physical_layer.py` | `results/physical_layer_metrics.json` |
+| Sec. VI-B, Tables IV–V | `run_physical_layer.py` (`parametric_study`, `adaptive_study`, `closed_loop_study`) | same |
+| Sec. VI-C, Table VI, Fig. 3 | `tracking_eval.py` | `results/tracking_metrics.json` |
+| Sec. VI-D, Table VII | `beam_prediction.py`, `beam_sequence_model.py` | `results/beam_*_metrics.csv` |
+| Sec. VI-D, Table VIII, Fig. 4 | `beam_training_overhead.py` (after `beam_sequence_model.py`) | `results/beam_training_overhead.json` |
 | All figures | `make_figures.py` | `paper/figures/` |

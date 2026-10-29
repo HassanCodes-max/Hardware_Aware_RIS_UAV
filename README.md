@@ -53,7 +53,7 @@ python -m pytest tests          # 7 regression tests, < 1 s
 | `build_scenario23_dataset.py`, `public_data_adapter.py` | Scenario 23 loading (rebuilding needs the full download, see Next steps) |
 | `public_data/scenario23_dev/` | Scenario 23 manifest + extracted 64-beam power CSV (only 699 of 11,387 images present) |
 | `legacy/` | First-draft Random Forest scripts, kept so Table II can be reproduced |
-| `make_figures.py`, `paper/` | Regenerates every paper figure from `results/`; `paper/revised_paper.md` is the revised manuscript |
+| `make_figures.py`, `paper/` | Regenerates every paper figure from `results/`; `paper/revised_paper.md` is the revised manuscript, `paper/build_docx.py` turns it into `paper/revised_paper_ieee.docx` (IEEE layout) |
 | `tests/` | Regression tests for the physics and for the audit facts |
 
 ## Current results (2026-10-29)
@@ -258,6 +258,16 @@ GPS alone can't steer a 32×32 RIS: 5 m of error is wider than the beam.
   from the prior's angular uncertainty and the predicted SNR. The margin
   (128) was chosen on separate seeds from the reported runs.
 
+### 2026-10-29: Major update 8 (IEEE Word version)
+
+- `paper/revised_paper_ieee.docx`: the manuscript in IEEE conference
+  layout (US Letter, Times, two columns, 6 pages). Rebuild it with
+  `python paper/build_docx.py` whenever `revised_paper.md` changes.
+- Tables renumbered I–VIII in order of appearance (the old I-a / I-b
+  are now II / III, and the old II–VI are IV–VIII). Sec. VI-A was
+  reordered to match.
+- [VERIFY] items are highlighted in yellow in the Word file.
+
 ### 2026-10-29: Major update 7 (hardware sensitivity and sub-THz)
 
 - `phase_resolution_study`: coupling-aware control gains 0.55, 0.92 and
@@ -269,7 +279,7 @@ GPS alone can't steer a 32×32 RIS: 5 m of error is wider than the beam.
   slightly beats 60 GHz on propagation. With published D-band hardware
   (14 dBm average, NF 10 dB) it needs a 32 cm RIS for full availability,
   vs 24 cm at 60 GHz.
-- Paper updated: Tables I-a and I-b, the 140 GHz paragraph, and
+- Paper updated: coupling and D-band tables (now Tables II and III), the 140 GHz paragraph, and
   references [20] and [21] (marked to verify).
 - Beam GRU: beam-shift/mirror augmentation plus a 3-seed ensemble
   (`gru_soft_aug_ens`), aimed at the t+3 macro-F1 interval.
@@ -309,8 +319,10 @@ Ordered by impact. Check items off here as they're done.
    Waiting on step 1. Goal: top-3 ≥ 90% at t+3.
 3. [x] Sequence model: GRU with soft target (`beam_sequence_model.py`).
    Next, try a TCN or Transformer once GPS is available.
-4. [x] Paper rewritten: `paper/revised_paper.md`. Remaining: move it
-   into the IEEE Word/LaTeX template, and resolve the [VERIFY] items.
+4. [x] Paper rewritten: `paper/revised_paper.md`, and the IEEE Word
+   version `paper/revised_paper_ieee.docx` (built by
+   `paper/build_docx.py`). Remaining: resolve the [VERIFY] items
+   (references [2], [7], [20], [21]), then rebuild the Word file.
    The original plan was:
    - Table II: new task, split and metrics.
    - Sec. IV/VI-E: the array-gain metric; the conclusion is reversed.
