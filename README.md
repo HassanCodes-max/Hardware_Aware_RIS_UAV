@@ -33,6 +33,8 @@ python -m pytest tests          # 14 regression tests, a few seconds
 | `beam_prediction.py` | Next-beam prediction on Scenario 23, cross-validated over flight sequences | `beam_prediction_metrics.{json,csv}`, `beam_prediction_folds.csv` | ~3 min |
 | `beam_sequence_model.py` | GRU over 8 sweeps (hard label vs soft power target), same protocol and metrics | `beam_sequence_metrics.{json,csv}` | ~15 min (CPU) |
 | `beam_training_overhead.py` | Two-stage AI-assisted beam training: shortlist K beams from the past, measure them, keep the best. Scored against the full 64-beam ground truth with nested-CV operating points and sequence-bootstrap CIs (run after `beam_sequence_model.py`) | `beam_training_overhead.json`, `*_curves.csv` | ~3 min |
+| `conformal_beam_training.py` | Conformal beam shortlists calibrated on held-out flights to a target exact top-1 (90–99%); rank and APS scores (run after `beam_sequence_model.py`) | `conformal_beam_training.{json,csv}` | ~1 min |
+| `closed_loop_beam_tracking.py` | Replays every flight with policies that know only the beams they measured (window + learned tie partners, periodic or loss-triggered full sweeps); exact top-1, latency, effective spectral efficiency | `closed_loop_beam_tracking.{json,csv}`, `*_flights.csv` | ~1 min |
 | `tracking_eval.py` | Position predictors (persistence, CV, Kalman, learned) scored by delivered array gain at 10/100/500 ms horizons | `tracking_metrics.{json,csv}` | ~1 min |
 | `main.py` | Per-time-step trace along the default flight | `simulation.csv` | ~4 s |
 | `phase_tracking.py`, `dataset_generator.py`, `hybrid_dataset_generator.py` | Synthetic phase datasets | `*.csv` | minutes |
@@ -147,6 +149,48 @@ best beam's power.
 - The tie graph is the main gain at t+3: all-class macro-F1 rises from
   0.86–0.90 to 0.91–0.93 with fewer beams. The GRU ensemble + tie graph
   is the cheapest t+3 setting (11.7 beams).
+
+**Conformal shortlists** (open-loop, like the table above). A measured
+set returns the exact best beam if and only if that beam is in the set,
+so set coverage *is* exact top-1. Calibrating the set size on four folds
+and testing on the fifth:
+
+| Target exact top-1 | t+1: achieved (worst fold), beams | t+3: achieved (worst fold), beams |
+|---|---|---|
+| 90% | 91.5% (89.6%), 2.2 | 92.4% (89.4%), 4.0 |
+| 95% | **96.1% (95.3%), 3.0** | **95.5% (92.7%), 5.4** |
+| 98% | 98.3% (97.2%), 4.4 | 98.0% (96.8%), 8.8 |
+| 99% | 99.2% (98.7%), 6.2 | 99.0% (98.1%), 17.4 |
+
+Coverage tracks the target on average. Flights differ, so a single held-out
+fold can fall up to 2.3 points short at t+3. Adaptive (APS) sets over-cover
+(98.8% for a 95% target) with a 95th-percentile size of 41–56 beams, so
+they are worse for worst-case latency.
+
+**Closed loop** (`closed_loop_beam_tracking.py`; see AUDIT.md H6). The
+tables above build each shortlist from full sweeps that a reduced-training
+system would not have. Here every policy knows only the beams it measured.
+SE is effective spectral efficiency (training airtime removed, beam ageing
+to the next step measured), as % of a genie with the best beam and no
+training time. The dataset's powers are unitless, so SE is given at
+nominal best-beam SNRs.
+
+| Policy | Exact top-1 | Within noise | Beam-training latency | SE @ 0 / 10 / 20 dB |
+|---|---|---|---|---|
+| Full sweep every step | 100% | 100% | 5.00 ms | 96.5 / 96.5 / 96.5% |
+| Window ±1, full sweep every 4 | 91.2% | 96.4% | 1.50 ms | 98.2 / 98.5 / 98.7% |
+| **Window ±1 + 4 tie partners, full every 4** | **97.8%** | **99.4%** | 1.61 ms | 98.7 / 98.8 / 98.8% |
+| **Window ±1 + 4 tie partners, full every 8** | **97.2%** | **99.2%** | **1.05 ms** | **99.0 / 99.1 / 99.2%** |
+| Window ±1, loss-triggered sweeps only | 75.5% | 83.2% | 0.35 ms | 92.9 / 95.0 / 96.8% |
+| Window ±1 + 6 tie partners, loss-triggered only | 96.1% | 96.9% | 0.64 ms | 98.5 / 98.9 / 99.2% |
+
+- The learned tie graph is what makes closed-loop tracking work: with
+  loss-triggered sweeps only it lifts exact top-1 from 75.5% to 96.1%.
+- At this testbed's 142 ms step a full sweep is only 3.5% of airtime, so
+  throughput gains are a few percent. The gain is in latency per
+  decision: about 1 ms instead of 5 ms.
+- The GRU can't yet run in this loop: it needs full-sweep history. A GRU
+  trained on masked (measured-only) sweeps is the next step.
 
 **Predictive RIS tracking** (32×32 RIS, 2 cm position noise, held-out trajectory types)
 
@@ -285,6 +329,16 @@ GPS alone can't steer a 32×32 RIS: 5 m of error is wider than the beam.
 - `adaptive_pilot_plan` / `estimate_from_prior`: the pilot budget comes
   from the prior's angular uncertainty and the predicted SNR. The margin
   (128) was chosen on separate seeds from the reported runs.
+
+### 2026-10-30: Major update 10 (conformal sets, closed loop)
+
+- `conformal_beam_training.py`: conformal shortlists with a target exact
+  top-1. 95% target: 96.1% at t+1 (3 beams), 95.5% at t+3 (5.4 beams).
+- Audit finding H6: reduced beam training was scored open-loop (it
+  assumed full-sweep history).
+- `closed_loop_beam_tracking.py`: flight replay with measured-only
+  knowledge, effective spectral efficiency and latency. Tie-graph
+  tracking: 97.2% exact top-1, 99.2% within noise, 1.05 ms.
 
 ### 2026-10-30: Major update 9 (95% target, beam-training latency)
 
