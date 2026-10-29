@@ -55,41 +55,47 @@ def save(figure, name: str) -> None:
 
 def target_line(axis, value: float) -> None:
     axis.axhline(value, color=INK_MUTED, linewidth=0.8, linestyle="--", zorder=1)
-    axis.text(axis.get_xlim()[1], value, " 85%", va="center", ha="left", color=INK_MUTED, fontsize=7)
+    axis.text(axis.get_xlim()[1], value, f" {value:.0%}", va="center", ha="left", color=INK_MUTED, fontsize=7)
 
 
 def figure_beam_training() -> None:
-    """Exact top-1 and macro-F1 vs beams measured at t+1 (two panels, one axis each)."""
+    """Exact top-1 and macro-F1 vs beams measured, t+1 (top) and t+3 (bottom)."""
 
     curves = pd.read_csv(RESULTS / "beam_training_overhead_curves.csv")
-    curves = curves[(curves["horizon"] == 1) & curves["shortlist"].str.startswith("K=")]
     ceiling = json.loads((RESULTS / "beam_training_overhead.json").read_text())["noncausal_oracle_ceiling"]
 
+    # Burst rows are labelled "K=first+partners"; show the 4-partner series.
     series = [
-        ("gru_aug_ens+sweep", "GRU ensemble + last sweep (AI)", BLUE, "o"),
-        ("window", "Window around last beam", ORANGE, "s"),
-        ("last_sweep", "Last-sweep ranking", AQUA, "^"),
+        ("gru_aug_ens burst", r"K=\d+\+4$", "GRU ensemble + tie graph, burst (AI)", BLUE, "o"),
+        ("gru_aug_ens+sweep", r"K=\d+$", "GRU ensemble + last sweep (AI)", AQUA, "D"),
+        ("window", r"K=\d+$", "Window around last beam", ORANGE, "s"),
+        ("last_sweep", r"K=\d+$", "Last-sweep ranking", GREY, "^"),
     ]
 
-    figure, axes = plt.subplots(1, 2, figsize=(COLUMN_WIDTH_IN * 2, 2.3))
-    for axis, metric, label, oracle in (
-        (axes[0], "exact_top1", "Exact top-1 accuracy", ceiling["exact_top1"]),
-        (axes[1], "macro_f1", "Macro-F1 (56 classes)", ceiling["macro_f1"]),
-    ):
-        for method, name, color, marker in series:
-            rows = curves[curves["method"] == method].sort_values("mean_beams_measured")
-            axis.plot(rows["mean_beams_measured"], rows[metric], color=color, linewidth=1.5,
-                      marker=marker, markersize=4, label=name)
-        axis.set_xlim(0.5, 16.5)
-        axis.set_xticks([1, 2, 4, 6, 8, 12, 16])
-        axis.set_ylim(0.3, 1.01)
-        axis.set_xlabel("Beams measured per decision (of 64)")
-        axis.set_ylabel(label)
-        target_line(axis, 0.85)
-        axis.axhline(oracle, color=GREY, linewidth=0.8, linestyle=":")
-        axis.text(16.3, oracle - 0.04, "blind-prediction ceiling", ha="right", color=INK_MUTED, fontsize=7)
+    figure, axes = plt.subplots(2, 2, figsize=(COLUMN_WIDTH_IN * 2, 4.4), sharex=True)
+    for row, horizon in enumerate((1, 3)):
+        at_horizon = curves[curves["horizon"] == horizon]
+        for axis, metric, label, oracle in (
+            (axes[row, 0], "exact_top1", "Exact top-1", ceiling["exact_top1"]),
+            (axes[row, 1], "macro_f1", "Macro-F1 (56 classes)", ceiling["macro_f1"]),
+        ):
+            for method, pattern, name, color, marker in series:
+                rows = at_horizon[(at_horizon["method"] == method)
+                                  & at_horizon["shortlist"].str.fullmatch(pattern)]
+                rows = rows.sort_values("mean_beams_measured")
+                axis.plot(rows["mean_beams_measured"], rows[metric], color=color, linewidth=1.5,
+                          marker=marker, markersize=4, label=name)
+            axis.set_xlim(0.5, 16.5)
+            axis.set_xticks([1, 2, 4, 6, 8, 12, 16])
+            axis.set_ylim(0.3, 1.01)
+            axis.set_ylabel(f"{label}, t+{horizon}")
+            target_line(axis, 0.95)
+            axis.axhline(oracle, color=GREY, linewidth=0.8, linestyle=":")
+            axis.text(16.3, oracle - 0.05, "blind-prediction ceiling", ha="right", color=INK_MUTED, fontsize=7)
 
-    axes[0].legend(loc="lower right", fontsize=7)
+    for axis in axes[1]:
+        axis.set_xlabel("Beams measured per decision (of 64)")
+    axes[0, 0].legend(loc="lower right", fontsize=6.5)
     figure.tight_layout()
     save(figure, "fig_beam_training.png")
 
