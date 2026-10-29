@@ -23,10 +23,11 @@ knowledge with 64× fewer pilots than per-element LMMSE, and needs no pilots whe
 prediction is available; and (iii) predictive tracking delivers 99.3% of the ideal array gain at 500 ms
 latency, whereas persistence delivers 63%. On real 60 GHz measurements (DeepSense 6G Scenario 23) we
 show that exact blind beam prediction is bounded at 79% top-1 by measurement noise, and propose an
-AI-assisted reduced beam training scheme with a learned beam-tie graph. At a 140 ms horizon it selects
-the exact optimal beam 99.3% of the time (macro-F1 0.961 over all 56 beam classes) with 0.55 ms of
-beam training, 9× less than a full sweep; at a 0.4 s horizon it reaches 99.1% exact top-1 and macro-F1
-0.974 over beams with at least five samples, under sequence-level nested cross-validation.
+AI-assisted reduced beam training scheme with a learned beam-tie graph. Given full-sweep history it
+selects the exact optimal beam 99.3% of the time at a 140 ms horizon (macro-F1 0.961 over all 56 beam
+classes) and 99.1% at 0.4 s. Replayed in closed loop, where the system knows only the beams it measured,
+tie-graph tracking selects the exact optimal beam 97.2% of the time (99.2% within measurement noise)
+with 1.05 ms of beam training per decision instead of 5 ms, under sequence-level cross-validation.
 
 **Index Terms**: mmWave, sub-THz, UAV, reconfigurable intelligent surface, beam training, beam
 tracking, channel estimation, hardware impairments, deep learning.
@@ -63,8 +64,9 @@ are nearly identical, so random splits leak.
    works at realistic sensor precision once the right metric is used (Sec. IV, VI-C).
 4. On real 60 GHz measurements, a proof that exact blind beam prediction is noise-limited, a GRU trained
    on a soft power target, a learned beam-tie graph, and an AI-assisted reduced beam training scheme
-   meeting ≥ 95% exact top-1 and macro-F1 at sub-millisecond beam-training latency, evaluated with
-   sequence-level nested cross-validation and bootstrap confidence intervals (Sec. V, VI-D).
+   meeting ≥ 95% exact top-1 and macro-F1, conformal shortlists calibrated to a target accuracy, and a
+   closed-loop replay of every flight in which the system knows only what it measured, evaluated with
+   sequence-level cross-validation and bootstrap confidence intervals (Sec. V, VI-D).
 
 ---
 
@@ -241,6 +243,23 @@ other four folds, and is then applied unchanged to the held-out fold. The tie gr
 folds other than those it is scored on, including inside this selection. 95% confidence intervals come
 from 500 bootstrap resamples of whole flight sequences.
 
+**Conformal shortlists.** A measured set returns the exact optimal beam if and only if that beam is in
+the set, so set coverage equals exact top-1. We calibrate the set size by split conformal prediction
+[23]: on four folds, the score is the true beam's rank in the GRU ranking, and the threshold is its
+⌈(n + 1)(1 − α)⌉-th smallest value; the fifth fold is the test. Adaptive prediction sets [24] use the
+GRU's cumulative probability instead. Samples within a flight are correlated and flights differ, so the
+exchangeability behind the guarantee holds only approximately; we report the coverage of every held-out
+fold.
+
+**Closed-loop replay.** The schemes above build each shortlist from full sweeps of earlier steps, which
+a system measuring only K beams per step never has. We therefore replay every flight step by step with
+policies that know only the beams they measured: the current beam, its ±1 index neighbours and its M
+strongest tie-graph partners (fitted on other folds' flights), with a full sweep every N steps or only
+on beam loss (best measured power more than 3 dB below the current beam's last value). The effective
+spectral efficiency over each interval is (1 − T_train/T) times the mean of log2(1 + SNR₀ p_used/p_best)
+at the interval's start and end, using measured powers, so beam ageing is measured, not modelled. The
+dataset's powers are unitless, so SNR₀, the best beam's SNR, is a nominal operating point.
+
 ---
 
 ## VI. Results
@@ -388,8 +407,8 @@ top-1 and macro-F1 0.974 over beams with at least five samples, with 11.7 beams.
 variant reaches 98.9% / 0.971 in 1.22 ms. Every scheme in Table VIII also keeps at least 99.5% of
 decisions within the 0.25 dB noise floor and at least 99.8% of the best beam's power.
 
-*Table VIII. Reduced beam training, nested-CV operating points, scored against the full-sweep ground
-truth [95% CI over sequences]. Latency: beam-training time under 5G NR FR2 timing (full sweep: 5 ms).
+*Table VIII. Reduced beam training (open-loop: full-sweep history assumed), nested-CV operating points,
+scored against the full-sweep ground truth [95% CI over sequences]. Latency: beam-training time under 5G NR FR2 timing (full sweep: 5 ms).
 Macro-F1 ≥ 5: over beam classes with at least five samples.*
 
 | Horizon | Shortlist | Beams | Latency (ms) | Exact top-1 (%) | Macro-F1 (56 classes) | Macro-F1 ≥ 5 |
@@ -420,6 +439,33 @@ Each such class costs 1/56 ≈ 0.018 of macro-F1. Over classes with at least fiv
 scheme with the tie graph exceeds 0.97. Pooled curves reach 0.95 all-class with 16–18 beams, but
 settings selected on four folds do not hold it on the fifth, so we report the nested values.
 
+**Conformal shortlists.** Calibrated for 95% exact top-1, the rank-based set reaches 96.1% with 3 beams
+at t + 1 (worst held-out fold 95.3%) and 95.5% with 5.4 beams at t + 3 (worst fold 92.7%); for a 99%
+target, 99.2% with 6.2 beams and 99.0% with 17.4 beams. Coverage tracks the target on average, but a
+single flight group can fall short by up to 2.3 points, which is the cost of non-exchangeable flights.
+Adaptive sets over-cover (98.8% for a 95% target at t + 1) with a 95th-percentile size of 41–56 beams,
+which is worse for worst-case latency.
+
+**Closed loop** (Table IX). Without full-sweep history, a ±1 window with loss-triggered sweeps finds the
+exact beam only 75.5% of the time; adding six tie-graph partners raises this to 96.1% at 0.64 ms per
+decision. With a full sweep every 8 steps, tie-graph tracking reaches 97.2% exact top-1 and 99.2% within
+noise at 1.05 ms. At the testbed's 142 ms step a full sweep takes only 3.5% of the airtime, so effective
+spectral efficiency rises modestly, from 96.5% of the genie to 99.0–99.2%; the main gain is the 5× lower
+beam-training latency per decision.
+
+*Table IX. Closed-loop replay of all 35 flights (each policy knows only what it measured). Latency:
+mean beam-training time per decision. SE: effective spectral efficiency as % of a genie that always
+uses the best beam with no training time, at nominal best-beam SNR of 0 / 10 / 20 dB.*
+
+| Policy | Exact top-1 (%) | Within noise (%) | Latency (ms) | SE (% of genie) |
+|---|---|---|---|---|
+| Full sweep every step | 100 | 100 | 5.00 | 96.5 / 96.5 / 96.5 |
+| Window ±1, full sweep every 4 | 91.2 | 96.4 | 1.50 | 98.2 / 98.5 / 98.7 |
+| Window ±1 + 4 tie partners, full every 4 | **97.8** | **99.4** | 1.61 | 98.7 / 98.8 / 98.8 |
+| **Window ±1 + 4 tie partners, full every 8** | **97.2** | **99.2** | **1.05** | **99.0 / 99.1 / 99.2** |
+| Window ±1, loss-triggered sweeps only | 75.5 | 83.2 | 0.35 | 92.9 / 95.0 / 96.8 |
+| Window ±1 + 6 tie partners, loss-triggered only | 96.1 | 96.9 | 0.64 | 98.5 / 98.9 / 99.2 |
+
 ---
 
 ## VII. Discussion
@@ -439,7 +485,9 @@ the largest system-level effects are the RIS sizes needed for coverage: 2.25× t
 **Learning where it helps.** On power sweeps alone the learned gain over persistence is modest at t + 1
 and clear at t + 3 (86.0% vs 78.1% within noise). In reduced beam training, the largest single gain
 comes from a simple learned structure, the beam-tie graph, rather than from the sequence model. The GRU
-then reduces the beams measured at t + 3. The soft
+then reduces the beams measured at t + 3. In closed loop the GRU cannot yet be used, because it expects
+full-sweep history; a sequence model trained on the sparse measurements a tracker actually has is the
+natural next step. The soft
 target and beam-axis augmentation matter more than the architecture. Logit adjustment for the class
 imbalance [19] lowered every metric because the beam distribution differs between flights.
 
@@ -448,7 +496,9 @@ PA or RIS; Table II bounds the effect of the coupling strength. The obliquity ex
 beam-prediction results use power sweeps only, because the UAV GPS files of Scenario 23 were not
 available to us at the time of writing. The all-class macro-F1 at t + 3 (0.929) is limited by beams
 seen only once; more flights, not a different model, are needed to estimate it reliably. The latency
-model uses standard 5G NR FR2 timing, not the testbed's own sweep timing. The D-band transceiver values are representative published figures, not a specific design.
+model uses standard 5G NR FR2 timing, not the testbed's own sweep timing. The Table VIII figures are
+open-loop (they assume full-sweep history); Table IX gives the closed-loop figures. Effective spectral
+efficiency is reported at nominal SNRs because the dataset's powers are unitless. The D-band transceiver values are representative published figures, not a specific design.
 
 ---
 
@@ -459,10 +509,11 @@ measurements, to evaluate beam management end to end. Hardware impairments cost 
 elements at 60 GHz, and D-band transceiver limits push the 140 GHz panel to 32 cm; a position-parametric
 estimator matches perfect channel knowledge with 64× fewer pilots;
 Kalman-based prediction preserves 99.3% of the array gain at 500 ms latency; and AI-assisted reduced beam
-training with a learned beam-tie graph selects the exact optimal beam 99.3% of the time (macro-F1 0.961)
-with 0.55 ms of beam training, and 99.1% at a 0.4 s horizon, with all reported metrics evaluated under
-sequence-level cross-validation. Future work will add UAV position to beam
-prediction, measured hardware coefficients, and joint training of the tracker and the beam shortlist.
+training with a learned beam-tie graph selects the exact optimal beam 99.3% of the time given full-sweep
+history and 97.2% in a closed-loop replay of every flight, with 1.05 ms of beam training per decision
+instead of 5 ms, with all reported metrics evaluated under sequence-level cross-validation. Future work will add UAV position to beam
+prediction, measured hardware coefficients, and a sequence model trained on the sparse measurements of the
+closed loop.
 
 ---
 
@@ -536,6 +587,12 @@ amplifier with NF down to 10 dB was found but its full citation needs checking.]
 [22] 3GPP TS 38.213, "NR; Physical layer procedures for control," Sec. 4.1 (SS/PBCH block candidate
 positions, case D). **[VERIFY: release and version.]**
 
+[23] A. N. Angelopoulos and S. Bates, "Conformal prediction: A gentle introduction," *Found. Trends Mach.
+Learn.*, vol. 16, no. 4, pp. 494–591, 2023.
+
+[24] Y. Romano, M. Sesia, and E. J. Candès, "Classification with valid and adaptive coverage," in *Proc.
+NeurIPS*, 2020.
+
 ---
 
 ## Reproducing this paper
@@ -547,4 +604,6 @@ positions, case D). **[VERIFY: release and version.]**
 | Sec. VI-C, Table VI, Fig. 3 | `tracking_eval.py` | `results/tracking_metrics.json` |
 | Sec. VI-D, Table VII | `beam_prediction.py`, `beam_sequence_model.py` | `results/beam_*_metrics.csv` |
 | Sec. VI-D, Table VIII, Fig. 4 | `beam_training_overhead.py` (after `beam_sequence_model.py`) | `results/beam_training_overhead.json` |
+| Sec. VI-D, conformal shortlists | `conformal_beam_training.py` (after `beam_sequence_model.py`) | `results/conformal_beam_training.json` |
+| Sec. VI-D, Table IX | `closed_loop_beam_tracking.py` | `results/closed_loop_beam_tracking.json` |
 | All figures | `make_figures.py` | `paper/figures/` |
