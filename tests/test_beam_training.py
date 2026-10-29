@@ -98,3 +98,16 @@ def test_closed_loop_policy_only_sees_measured_beams():
 
     assert window["chosen"][1] == 28 and window["beams"][1] == 3
     assert partners["chosen"][1] == 38 and partners["beams"][1] == 4
+
+
+def test_measured_only_features_hide_unmeasured_beams():
+    from closed_loop_learned_tracking import FILL_DB, step_features
+
+    power = np.linspace(0.1, 1.0, BEAMS)
+    mask = np.zeros(BEAMS, dtype=bool)
+    mask[[10, 20]] = True
+    features = step_features(power, mask, full=False, gap_s=0.14)
+
+    assert features[20] == 0.0 and features[10] < 0.0           # dB relative to best measured
+    assert np.all(features[np.flatnonzero(~mask)] == FILL_DB)    # true power of others not leaked
+    assert features[BEAMS + 10] == 1.0 and features[BEAMS + 11] == 0.0
