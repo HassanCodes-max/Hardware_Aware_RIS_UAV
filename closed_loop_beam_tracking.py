@@ -73,13 +73,14 @@ POLICIES = [
 
 
 def run_flight(power: np.ndarray, policy: Policy, graph: np.ndarray) -> dict[str, np.ndarray]:
-    """Replay one flight; return per-step chosen beam, beams measured and latency."""
+    """Replay one flight; return per-step chosen beam, beams measured, latency and the measured mask."""
 
     steps = len(power)
     chosen = np.empty(steps, dtype=int)
     measured_count = np.empty(steps, dtype=int)
     latency = np.empty(steps)
     full_sweeps = np.zeros(steps, dtype=bool)
+    mask = np.zeros((steps, BEAMS), dtype=bool)
     current, reference = None, None
 
     for n in range(steps):
@@ -87,6 +88,7 @@ def run_flight(power: np.ndarray, policy: Policy, graph: np.ndarray) -> dict[str
         if current is None or periodic:
             current = int(power[n].argmax())
             measured_count[n], latency[n], full_sweeps[n] = BEAMS, BEAMS * BEAM_MEASUREMENT_MS, True
+            mask[n] = True
         else:
             candidates = {current}
             candidates.update(b for b in range(current - policy.window, current + policy.window + 1)
@@ -96,18 +98,21 @@ def run_flight(power: np.ndarray, policy: Policy, graph: np.ndarray) -> dict[str
             best = int(candidates[power[n, candidates].argmax()])
             measured_count[n] = len(candidates)
             latency[n] = len(candidates) * BEAM_MEASUREMENT_MS
+            mask[n, candidates] = True
 
             if 10.0 * np.log10(power[n, best] / reference) < -DROP_DB:
                 best = int(power[n].argmax())
                 latency[n] += REPORT_ROUND_TRIP_MS + (BEAMS - len(candidates)) * BEAM_MEASUREMENT_MS
                 measured_count[n] = BEAMS
                 full_sweeps[n] = True
+                mask[n] = True
             current = best
 
         chosen[n] = current
         reference = power[n, current]
 
-    return {"chosen": chosen, "beams": measured_count, "latency": latency, "full_sweep": full_sweeps}
+    return {"chosen": chosen, "beams": measured_count, "latency": latency, "full_sweep": full_sweeps,
+            "mask": mask}
 
 
 def effective_se(
