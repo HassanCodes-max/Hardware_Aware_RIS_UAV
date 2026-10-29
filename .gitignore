@@ -2,3 +2,9 @@ __pycache__/
 *.pyc
 results/
 *.pkl
+# Full DeepSense Scenario 23 download: large and under DeepSense's own terms; keep it local.
+public_data/scenario23_dev/unit2/
+public_data/scenario23_dev/unit1/mmWave_data/
+public_data/scenario23_dev/unit1/GPS_data/
+public_data/scenario23_dev/unit1/camera_data/
+public_data/scenario23_dev/resources/
