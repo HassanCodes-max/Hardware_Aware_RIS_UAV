@@ -272,13 +272,17 @@ class Builder:
             sum(bool(re.match(r"\W*[A-Za-z]", row[c])) for row in body) > len(body) / 2
             for c in range(len(header))
         ]
+        # Keep every row with the next one, so a table never splits across
+        # pages or columns (they are all short enough to fit).
         for r, row in enumerate(rows):
+            _cant_split(table.rows[r])
             for c, cell_text in enumerate(row):
                 cell = table.cell(r, c)
                 cell.width = Inches(widths[c])
                 p = cell.paragraphs[0]
                 left = c == 0 or text_columns[c]
-                paragraph_format(p, WD_ALIGN_PARAGRAPH.LEFT if left else WD_ALIGN_PARAGRAPH.CENTER)
+                paragraph_format(p, WD_ALIGN_PARAGRAPH.LEFT if left else WD_ALIGN_PARAGRAPH.CENTER,
+                                 keep_next=r < len(rows) - 1)
                 add_inline(p, cell_text, 8, bold=(r == 0))
                 if r == 0:
                     _cell_bottom_border(cell)

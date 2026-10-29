@@ -524,8 +524,7 @@ in *Proc. ICCIS*, 2021, doi: 10.1109/ICCIS54243.2021.9676382.
 
 [2] C. Chaccour, M. N. Soorki, W. Saad, M. Bennis, P. Popovski, and M. Debbah, "Seven defining features
 of terahertz (THz) wireless systems: A fellowship of communication and sensing," *IEEE Commun. Surveys
-Tuts.*, vol. 24, no. 2, pp. 967–993, 2022. **[VERIFY: the first draft attributed this paper to
-I. F. Akyildiz et al. in IEEE JSAC.]**
+Tuts.*, vol. 24, no. 2, pp. 967–993, 2022, doi: 10.1109/COMST.2022.3143454.
 
 [3] G. Charan *et al.*, "Towards real-world 6G drone communication: Position and camera aided beam
 prediction," in *Proc. IEEE GLOBECOM*, 2022, pp. 2951–2956.
@@ -540,7 +539,7 @@ Commun. Lett.*, vol. 11, no. 1, pp. 38–42, Jan. 2022.
 [6] M. Meles, A. Rajasekaran, L. Mela, and R. Jäntti, "RIS-assisted three-dimensional drone localization
 and tracking under hardware impairments," *IEEE Access*, vol. 12, pp. 81348–81361, 2024.
 
-[7] **[VERIFY: authors missing]** "Fundamentals of wobbling and hardware impairments-aware air-to-ground
+[7] M. Banagar and H. S. Dhillon, "Fundamentals of wobbling and hardware impairments-aware air-to-ground
 channel model," *IEEE Trans. Veh. Technol.*, vol. 73, no. 12, pp. 17946–17962, Dec. 2024.
 
 [8] Recommendation ITU-R P.676-13, "Attenuation by atmospheric gases and related effects," ITU, 2022.
@@ -585,13 +584,14 @@ efficiency," *Found. Trends Signal Process.*, vol. 11, no. 3–4, pp. 154–655,
 amplifier with NF down to 10 dB was found but its full citation needs checking.]**
 
 [22] 3GPP TS 38.213, "NR; Physical layer procedures for control," Sec. 4.1 (SS/PBCH block candidate
-positions, case D). **[VERIFY: release and version.]**
+positions, case D: up to 64 SS/PBCH blocks per 5 ms half-frame at 120 kHz SCS). **[VERIFY: release
+and version; we could not confirm the latest version online.]**
 
 [23] A. N. Angelopoulos and S. Bates, "Conformal prediction: A gentle introduction," *Found. Trends Mach.
-Learn.*, vol. 16, no. 4, pp. 494–591, 2023.
+Learn.*, vol. 16, no. 4, pp. 494–591, 2023, doi: 10.1561/2200000101.
 
 [24] Y. Romano, M. Sesia, and E. J. Candès, "Classification with valid and adaptive coverage," in *Proc.
-NeurIPS*, 2020.
+NeurIPS*, vol. 33, 2020.
 
 ---
 
