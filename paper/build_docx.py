@@ -27,8 +27,8 @@ OUTPUT = PAPER_DIR / "revised_paper_ieee.docx"
 FONT = "Times New Roman"
 COLUMN_WIDTH_IN = 3.5
 FULL_WIDTH_IN = 7.25
-# Figures wider than this aspect ratio are placed across both columns.
-WIDE_FIGURE_ASPECT = 2.5
+# Figures drawn wider than this (inches, from the PNG's dpi) span both columns.
+WIDE_FIGURE_MIN_IN = 1.5 * COLUMN_WIDTH_IN
 # Average 8 pt Times character width, used to decide if a table fits a column.
 TABLE_CHAR_WIDTH_IN = 0.055
 TABLE_CELL_PADDING_IN = 0.07
@@ -208,8 +208,8 @@ class Builder:
     def figure(self, path, caption_label, caption_text):
         image = PAPER_DIR / path
         with Image.open(image) as img:
-            aspect = img.width / img.height
-        wide = aspect > WIDE_FIGURE_ASPECT
+            drawn_width_in = img.width / img.info.get("dpi", (300, 300))[0]
+        wide = drawn_width_in > WIDE_FIGURE_MIN_IN
         if wide:
             self.switch_columns(1)
         width = (self.width_in - 0.1) if not wide else 6.5

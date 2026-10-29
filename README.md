@@ -22,7 +22,7 @@ draft and why several experiments were redesigned.
 ```powershell
 cd Hardware_Aware_RIS_UAV
 python -m pip install -r requirements.txt
-python -m pytest tests          # 7 regression tests, < 1 s
+python -m pytest tests          # 14 regression tests, a few seconds
 ```
 
 ## Experiments
@@ -88,37 +88,65 @@ noise in 75% of sweeps (see AUDIT.md), so these columns can't reach 85%
 on this data and aren't used as targets. They are reported so reviewers
 can see them.
 
-**AI-assisted reduced beam training** (the deployed task; exact labels)
+**AI-assisted reduced beam training** (the deployed task; exact labels; target ≥ 95%)
 
 Blind prediction of the exact beam index has a hard ceiling. Even a
 non-causal oracle that averages the sweeps *before and after* the target
 reaches only **79.0% exact top-1 and 0.59 macro-F1**. So the system
 predicts a shortlist, measures only those beams at the target time, and
 keeps the strongest. It is scored against the full 64-beam ground truth.
-K (or the confidence threshold) for each held-out fold is chosen on the
-other four folds. The 95% CIs come from bootstrapping over the 35 flight
-sequences.
+Every setting is chosen by nested CV: for each held-out fold, the
+lowest-latency setting meeting 95% on exact top-1 and all-class macro-F1
+over the other four folds. The tie graph (below) is always fitted on folds
+other than the ones scored, including inside that selection. The 95% CIs
+come from bootstrapping over the 35 flight sequences.
 
-| Horizon | Shortlist | Beams measured (of 64) | Exact top-1 [95% CI] | Macro-F1, all 56 classes [95% CI] |
-|---|---|---|---|---|
-| t+1 | Last sweep (no AI) | 4.2 (6.6%) | 97.6% [96.4, 98.5] | 0.871 [0.829, 0.912] |
-| t+1 | Window around last beam (no AI) | 6.0 (9.4%) | 99.0% [98.4, 99.6] | 0.929 [0.890, 0.980] |
-| t+1 | GRU + last-sweep fusion | 4.0 (6.3%) | 98.1% [97.2, 98.7] | 0.890 [0.853, 0.929] |
-| t+1 | **GRU ensemble + last-sweep fusion** | **4.0 (6.3%)** | **98.2% [97.3, 98.9]** | **0.898 [0.864, 0.948]** |
-| t+1 | **GRU adaptive (stop at 80% confidence)** | 5.6 (8.7%) | **98.8% [98.4, 99.3]** | **0.898 [0.857, 0.953]** |
-| t+3 | Last sweep (no AI) | 16.0 (25%) | 97.9% | 0.860 [0.823, 0.906] |
-| t+3 | GRU soft | 10.8 (16.9%) | 97.1% | 0.861 [0.804, 0.928] |
-| t+3 | **GRU ensemble, augmented** | **8.4 (13.1%)** | **98.0%** | **0.865 [0.813, 0.920]** |
+**Learned tie graph.** This codebook's strong beams aren't contiguous:
+beams 27, 28, 32, 33 and 38 are often within 0.1 dB of each other, so
+"look around the last beam" misses the true best. For each beam, the
+training flights give the beams most often within 1 dB of it when it was
+best. *Two-round* measures a shortlist, then the graph partners of the
+measured winner (plus a full-sweep fallback if power drops > 3 dB).
+*Burst* adds the partners of the two *predicted* best beams to the
+shortlist, so everything goes out in one burst with no report round trip.
 
-At t+1, the operating point, both AI shortlists meet 85% on exact top-1
-and all-class macro-F1 with the whole CI above 0.85, while measuring
-16× fewer beams than a full sweep. The plain window is also strong on
-macro-F1. The AI's measurable gain is fewer measurements: 4 beams vs 6
-at t+1, and 10.8 vs 16 (a third less) at t+3. At t+3 the macro-F1 point
-estimates pass but the CIs straddle 0.85. Classes with ≤ 5 samples
-dominate that gap; macro-F1 over classes with ≥ 5 samples is 0.94–0.96.
-Logit adjustment for class imbalance was tried and rejected because it
-lowered every metric (see the script docstring).
+**Latency model** (5G NR FR2, 120 kHz SCS): 64 SSB beams per 5 ms
+half-frame, so 78 µs per beam, plus 1 ms per extra report round trip. A
+full sweep costs 5 ms. GRU inference (0.5 ms single, 1.4 ms 3-model
+ensemble, batch 1, CPU) is **off the critical path**: the shortlist for
+t+h is computed from sweep t during the ~140 ms gap between sweeps.
+
+| Horizon | Method | Beams (of 64) | Latency, mean | Exact top-1 [95% CI] | Macro-F1, all 56 classes [95% CI] | Macro-F1, classes with ≥ 5 samples |
+|---|---|---|---|---|---|---|
+| t+1 | Last sweep, K=4 (old 85% operating point) | 4.2 | 0.33 ms | 97.6% [96.4, 98.5] | 0.871 [0.829, 0.912] | 0.945 |
+| t+1 | Last sweep, K=6 (no AI) | 6.0 | 0.47 ms | **99.1%** [98.6, 99.5] | **0.960** [0.940, 0.985] | 0.981 |
+| t+1 | **GRU ensemble + tie graph, two-round** | 7.0 | 0.55 ms | **99.3%** [98.7, 99.7] | **0.961** [0.941, 0.990] | 0.985 |
+| t+1 | GRU ensemble + sweep, burst | 6.4 | 0.50 ms | **99.2%** [98.7, 99.6] | **0.955** [0.940, 0.977] | 0.984 |
+| t+3 | Last sweep, K=16 (no AI) | 16.0 | 1.25 ms | 97.9% [96.6, 98.8] | 0.860 [0.823, 0.906] | 0.956 |
+| t+3 | GRU ensemble, single round | 15.2 | 1.19 ms | 98.9% [98.0, 99.5] | 0.896 [0.864, 0.944] | 0.965 |
+| t+3 | Last sweep + tie graph, two-round | 13.9 | 2.11 ms | **99.4%** [98.9, 99.7] | 0.914 [0.889, 0.956] | **0.979** |
+| t+3 | **GRU ensemble + tie graph, two-round** | 11.7 | 1.93 ms | **99.1%** [98.3, 99.7] | 0.929 [0.905, 0.964] | **0.974** |
+| t+3 | GRU ensemble, burst | 15.6 | 1.22 ms | **98.9%** [98.1, 99.6] | 0.912 [0.880, 0.949] | **0.971** |
+
+All rows also reach ≥ 99.5% within-noise accuracy and ≥ 99.8% of the
+best beam's power.
+
+- **t+1 meets 95% on every metric**, CIs included for exact top-1, at
+  0.5 ms of beam training (10× faster than a full sweep). Raising the
+  target from 85% to 95% costs 2–3 more beams. At this horizon the
+  non-AI K=6 shortlist also meets the target, so the honest AI gain at
+  t+1 is small.
+- **t+3 meets 95% on exact top-1 (99%) and on macro-F1 over classes with
+  ≥ 5 samples (0.97–0.98)**, but not on all-class macro-F1 (0.91–0.93,
+  CIs reaching 0.95–0.96). The gap is three beams seen **once** in the
+  whole dataset (23, 34, 55) whose true best beats the runner-up by
+  ~0.01 dB. Each costs 1/56 ≈ 0.018 of macro-F1. Pooled curves reach
+  0.95 at 16–18 beams, but nested selection on four folds under-provisions
+  because one singleton flips the selection-fold score. We report the
+  nested numbers.
+- The tie graph is the main gain at t+3: all-class macro-F1 rises from
+  0.86–0.90 to 0.91–0.93 with fewer beams. The GRU ensemble + tie graph
+  is the cheapest t+3 setting (11.7 beams).
 
 **Predictive RIS tracking** (32×32 RIS, 2 cm position noise, held-out trajectory types)
 
@@ -257,6 +285,22 @@ GPS alone can't steer a 32×32 RIS: 5 m of error is wider than the beam.
 - `adaptive_pilot_plan` / `estimate_from_prior`: the pilot budget comes
   from the prior's angular uncertainty and the predicted SNR. The margin
   (128) was chosen on separate seeds from the reported runs.
+
+### 2026-10-30: Major update 9 (95% target, beam-training latency)
+
+- `beam_training_overhead.py`: target raised to 95%. New learned tie
+  graph, two-round search with beam-loss fallback, single-burst
+  graph-expanded shortlist, and a 5G NR FR2 latency model. Operating
+  points minimise latency. The tie graph is fitted out-of-fold, including
+  inside the nested selection (an earlier in-sample version overstated
+  t+3 macro-F1 by ~0.02).
+- t+1: 99.1–99.3% exact top-1, 0.955–0.961 all-class macro-F1, about
+  0.5 ms of beam training. t+3: 98.9–99.4% exact top-1, 0.97–0.98
+  macro-F1 (≥ 5 samples), 0.91–0.93 all-class (singleton-limited).
+- Measured GRU inference latency at batch 1 (CPU): 0.5 ms single model,
+  1.4 ms ensemble. Off the critical path.
+- `tests/test_beam_training.py`: 4 tests for the tie graph, second
+  round, fallback and burst ranking.
 
 ### 2026-10-29: Major update 8 (IEEE Word version)
 
