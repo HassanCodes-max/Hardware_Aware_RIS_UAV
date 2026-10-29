@@ -439,12 +439,18 @@ Each such class costs 1/56 ≈ 0.018 of macro-F1. Over classes with at least fiv
 scheme with the tie graph exceeds 0.97. Pooled curves reach 0.95 all-class with 16–18 beams, but
 settings selected on four folds do not hold it on the fifth, so we report the nested values.
 
-**Conformal shortlists.** Calibrated for 95% exact top-1, the rank-based set reaches 96.1% with 3 beams
+**Conformal shortlists** (Fig. 5). Calibrated for 95% exact top-1, the rank-based set reaches 96.1% with 3 beams
 at t + 1 (worst held-out fold 95.3%) and 95.5% with 5.4 beams at t + 3 (worst fold 92.7%); for a 99%
 target, 99.2% with 6.2 beams and 99.0% with 17.4 beams. Coverage tracks the target on average, but a
 single flight group can fall short by up to 2.3 points, which is the cost of non-exchangeable flights.
 Adaptive sets over-cover (98.8% for a 95% target at t + 1) with a 95th-percentile size of 41–56 beams,
 which is worse for worst-case latency.
+
+![Fig. 5](figures/fig_conformal.png)
+
+*Fig. 5. Conformal shortlists (rank score, GRU ensemble). Left: achieved exact top-1 versus the target,
+pooled over held-out folds (solid) and for the worst fold (dotted); dashed: achieved = target. Right:
+mean beams measured.*
 
 **Closed loop** (Table IX). Without full-sweep history, a ±1 window with loss-triggered sweeps finds the
 exact beam only 75.5% of the time; adding six tie-graph partners raises this to 96.1% at 0.64 ms per

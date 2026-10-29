@@ -396,7 +396,12 @@ def main() -> None:
 
             if fold == 0:
                 rows[-1]["latency_fp32_ms"] = inference_latency_ms(model, config.window, quantise=False)
-                rows[-1]["latency_int8_ms"] = inference_latency_ms(model, config.window, quantise=True)
+                try:
+                    rows[-1]["latency_int8_ms"] = inference_latency_ms(model, config.window, quantise=True)
+                except (AttributeError, RuntimeError) as error:
+                    # Dynamic int8 breaks nn.TransformerEncoder's fast path in this PyTorch.
+                    print(f"  int8 not supported for {config.name}: {error}", flush=True)
+                    rows[-1]["latency_int8_ms"] = None
 
     # Pool held-out traces over folds.
     summary = []

@@ -180,8 +180,41 @@ def figure_ris_sizing() -> None:
     save(figure, "fig_ris_sizing.png")
 
 
+def figure_conformal() -> None:
+    """Achieved exact top-1 (= set coverage) and set size vs the conformal target."""
+
+    table = pd.read_csv(RESULTS / "conformal_beam_training.csv")
+    table = table[table["method"] == "gru_aug_ens rank"]
+
+    figure, axes = plt.subplots(1, 2, figsize=(COLUMN_WIDTH_IN * 2, 2.3))
+    for horizon, color, marker in ((1, BLUE, "o"), (3, ORANGE, "s")):
+        rows = table[table["horizon"] == horizon].sort_values("target_coverage")
+        target = 100 * rows["target_coverage"]
+        achieved, worst = 100 * rows["exact_top1"], 100 * rows["min_fold_coverage"]
+        axes[0].plot(target, achieved, color=color, linewidth=1.5, marker=marker, markersize=4,
+                     label=f"t+{horizon}, pooled")
+        axes[0].plot(target, worst, color=color, linewidth=1.0, linestyle=":", marker=marker,
+                     markersize=3, markerfacecolor="white", label=f"t+{horizon}, worst fold")
+        axes[1].plot(target, rows["mean_beams_measured"], color=color, linewidth=1.5, marker=marker,
+                     markersize=4, label=f"t+{horizon}")
+
+    axes[0].plot([89, 100], [89, 100], color=GREY, linewidth=0.8, linestyle="--", zorder=1)
+    axes[0].set_xlim(89, 100)
+    axes[0].set_ylim(88, 100)
+    axes[0].set_xlabel("Target exact top-1 (%)")
+    axes[0].set_ylabel("Achieved exact top-1 (%)")
+    axes[0].legend(loc="lower right", fontsize=6.5)
+    axes[1].set_xlim(89, 100)
+    axes[1].set_xlabel("Target exact top-1 (%)")
+    axes[1].set_ylabel("Beams measured (of 64)")
+    axes[1].legend(loc="upper left", fontsize=7)
+    figure.tight_layout()
+    save(figure, "fig_conformal.png")
+
+
 def main() -> None:
     figure_beam_training()
+    figure_conformal()
     figure_tracking()
     figure_impairments()
     figure_ris_sizing()
