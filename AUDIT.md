@@ -156,6 +156,24 @@ use `seq_index`.
 the phase wraps once per λ of *path-length* change. This is minor, and
 C3 makes the argument moot anyway.
 
+### H6. Reduced beam training was scored open-loop (found 2026-10-30)
+
+- `beam_training_overhead.py` and `conformal_beam_training.py` build each
+  shortlist from the *full* 64-beam sweeps of the previous 8 steps (GRU)
+  or of the last step (last-sweep ranking). A system that measures only
+  K beams per step never has those sweeps. Their latency and overhead
+  figures (e.g. 0.55 ms at t+1) hold only if a full sweep also runs every
+  step, which defeats the saving.
+- Fix: `closed_loop_beam_tracking.py` replays every flight with policies
+  that know only the beams they measured (local window + learned tie
+  partners, periodic or loss-triggered full sweeps). Closed loop, the
+  tie-graph tracker reaches 97.2% exact top-1 / 99.2% within noise at
+  1.05 ms mean beam-training latency (full sweep every 8 steps), against
+  5 ms for a full sweep each step.
+- Still open: a GRU trained on the sparse observations a closed-loop
+  system actually has (masked sweeps), so that the learned shortlist can
+  run in the loop too.
+
 ---
 
 ## Medium
@@ -227,3 +245,28 @@ Report these honestly in the paper:
   8.4 beams) but the macro-F1 CI [0.813, 0.920] straddles 0.85, because
   the rarest beams occur in only one or two of the 35 flights. Claim
   "about 85%", not "≥ 85%".
+
+---
+
+## About the "95% minimum" target (2026-10-30)
+
+**Status: met on exact top-1 at both horizons, open-loop and closed-loop;
+met on all-class macro-F1 at t+1; at t+3 all-class macro-F1 is 0.929.**
+
+| Metric | Setting | Value [95% CI] | ≥ 95%? |
+|---|---|---|---|
+| Exact top-1, t+1 | GRU ensemble + tie graph, two-round, 7 beams (open-loop) | 99.3% [98.7, 99.7] | ✅ |
+| Macro-F1 all 56 classes, t+1 | same | 0.961 [0.941, 0.990] | ✅ (CI dips below) |
+| Exact top-1, t+3 | same scheme, 11.7 beams (open-loop) | 99.1% [98.3, 99.7] | ✅ |
+| Macro-F1 classes with ≥ 5 samples, t+3 | same | 0.974 | ✅ |
+| Macro-F1 all 56 classes, t+3 | same | 0.929 [0.905, 0.964] | ❌ singleton beams 23, 34, 55 |
+| Exact top-1, conformal set (target 95%) | t+1: 3 beams; t+3: 5.4 beams (open-loop) | 96.1% / 95.5% | ✅ (worst t+3 fold 92.7%) |
+| Exact top-1, closed loop | window ±1 + 4 tie partners, full sweep every 8 | 97.2% | ✅ |
+| Within noise, closed loop | same | 99.2% | ✅ |
+
+- Open-loop figures assume full-sweep history (H6); closed-loop figures
+  do not.
+- Effective throughput at the testbed's 142 ms step: a full sweep costs
+  3.5% of airtime, so the best closed-loop tracker delivers 99.0–99.2% of
+  the genie's spectral efficiency against 96.5% for a full sweep every
+  step. The latency per decision falls from 5 ms to about 1 ms.

@@ -81,3 +81,20 @@ def test_conformal_threshold_and_aps_sets():
     ranking = np.arange(BEAMS)[None, :]
     assert aps_set_sizes(probabilities, ranking, 0.5)[0] == 1
     assert aps_set_sizes(probabilities, ranking, 0.85)[0] == 2
+
+
+def test_closed_loop_policy_only_sees_measured_beams():
+    from closed_loop_beam_tracking import Policy, run_flight
+
+    # Step 0 best is 28; at step 1 beam 38 (a learned tie partner of 28)
+    # becomes best. A ±1 window alone cannot find it; the tie graph can.
+    power = np.full((2, BEAMS), 0.5)
+    power[0, 28], power[0, 38] = 1.0, 0.98
+    power[1, 28], power[1, 38] = 0.95, 1.0
+    graph = tie_graph(sweeps_with_tie(20, best=28, tie=38))
+
+    window = run_flight(power, Policy("w", None, window=1), graph)
+    partners = run_flight(power, Policy("p", None, window=1, partners=1), graph)
+
+    assert window["chosen"][1] == 28 and window["beams"][1] == 3
+    assert partners["chosen"][1] == 38 and partners["beams"][1] == 4
