@@ -170,9 +170,11 @@ C3 makes the argument moot anyway.
   tie-graph tracker reaches 97.2% exact top-1 / 99.2% within noise at
   1.05 ms mean beam-training latency (full sweep every 8 steps), against
   5 ms for a full sweep each step.
-- Still open: a GRU trained on the sparse observations a closed-loop
-  system actually has (masked sweeps), so that the learned shortlist can
-  run in the loop too.
+- Follow-up (`closed_loop_learned_tracking.py`): ten deep sequence models
+  (GRU, LSTM, TCN, Transformer, MLP, GRU variants) trained on measured-only
+  logs and run in the loop. At equal budget none beats the tie graph:
+  98.2–98.8% exact top-1 against 99.16% (+2 beams) and 99.28% (+4 beams).
+  Reported as a negative result.
 
 ---
 
