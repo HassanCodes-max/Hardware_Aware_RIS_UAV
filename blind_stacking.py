@@ -24,7 +24,8 @@ sensing (GPS, camera UAV pixel). Metrics as in Table VII, plus the decisive /
 near-tie split and per-flight tests against the GRU ensemble.
 
 Needs results/{power_only,gps,uav_pixel,gps_uav_pixel}/beam_sequence_oof_h*.npz
-(missing runs are skipped). Writes results/blind_stacking.{json,csv}.
+(missing runs are skipped). Writes results/blind_stacking.{json,csv} and the stacked
+scores to results/stacked_{power,all}/beam_sequence_oof_h*.npz for beam_training_overhead.py.
 """
 
 import json
@@ -206,6 +207,10 @@ def main() -> None:
                 scores[test] = sum(w * pool[k][test] for k, w in weights.items() if w)
                 weights_log[f"{stack} t+{horizon}"].append({k: w for k, w in weights.items() if w})
             candidates[stack] = scores
+            # Saved with the power-only GRU scores so beam_training_overhead.py can shortlist from it.
+            folder = RESULTS / ("stacked_power" if stack.endswith("power only") else "stacked_all")
+            folder.mkdir(parents=True, exist_ok=True)
+            np.savez_compressed(folder / f"beam_sequence_oof_h{horizon}.npz", **base, stacked=scores)
         for name, block in components.items():
             for key in block:
                 if key.endswith(("LightGBM", "extra trees")) or key == "shifted template":

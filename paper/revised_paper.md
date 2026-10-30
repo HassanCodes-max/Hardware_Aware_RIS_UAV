@@ -29,11 +29,14 @@ classes) and 99.1% at 0.4 s. Replayed in closed loop, where the system knows onl
 tie-graph tracking selects the exact optimal beam 97.2–99.3% of the time with 1.05–1.31 ms of beam
 training per decision instead of 5 ms, and per-flight tests confirm its spectral-efficiency gain over full
 sweeps on 32 of 33 flights. Adding candidate beams from the UAV's GPS and from its position in the base
-station's camera image, located without labels, lets the tracker drop periodic full sweeps: it then
-selects the exact optimal beam 99.2% of the time (macro-F1 0.98 over beams with at least five samples)
-with 0.56 ms per decision, better than the tie-graph tracker on 25 of 33 flights. Ten deep sequence models trained on measured-only data do not beat the tie
-graph at equal measurement budget, and neither position nor camera features significantly improve blind
-prediction, under sequence-level cross-validation.
+station's camera image, located without labels, lets the tracker drop periodic full sweeps: with six
+candidates it selects the exact optimal beam 99.5% of the time with macro-F1 0.97 over all 56 beam
+classes and 0.66 ms per decision, better than the tie-graph tracker on 26 of 33 flights, and it degrades
+gracefully when the GPS report is up to 1.1 s old. Ten deep sequence models trained on measured-only
+data do not beat the tie graph at equal measurement budget. For blind prediction, no single model gains
+significantly from position or camera features, but a nested stack of all models raises exact top-1
+from 72.1 to 75.6% at 140 ms, 96% of the noise bound, and from 56.7 to 64.3% at 0.4 s, on most flights
+(Holm p ≤ 0.0014). All results use sequence-level cross-validation.
 
 **Index Terms**: mmWave, sub-THz, UAV, reconfigurable intelligent surface, beam training, beam
 tracking, channel estimation, hardware impairments, deep learning.
@@ -76,7 +79,9 @@ are nearly identical, so random splits leak.
    sequence-level cross-validation and bootstrap confidence intervals (Sec. V, VI-D).
 5. A label-free UAV locator for the base station's camera and a sensing-aided tracker that uses camera
    and GPS candidates instead of periodic sweeps, halving beam-training latency while raising exact
-   top-1, with per-flight significance tests for every comparison (Sec. VI-D).
+   top-1 above 99% and all-class macro-F1 above 0.95, robust to stale GPS and to the assumed timing, and
+   a nested stack of blind predictors that reaches 96% of the noise bound, with per-flight significance
+   tests for every comparison (Sec. VI-D).
 
 ---
 
@@ -445,7 +450,8 @@ the best model on every metric at both horizons, including blind macro-F1 at t +
 Exact top-1 and macro-F1 are bounded by measurement noise: the last row is a non-causal oracle that sees
 the sweeps on both sides of the predicted one. In parentheses: exact top-1 as % of that bound.
 Decisive / near-tie: exact top-1 on samples whose best beam leads the runner-up by more than the 0.25 dB noise floor (25% of
-samples) and on the other 75%. The
+samples) and on the other 75%. Stacked: nested combination of all rows above plus a shifted-template
+tracker and tree models; "all sensing" adds the GPS and camera (UAV pixel) runs of Table XI. The
 deployed task, which measures a few beams, is in Tables VIII–X and XIV (best schemes: exact top-1 about 99%).*
 
 | Horizon | Model | Within noise | Balanced within noise | Top-3 | Power ratio | Exact top-1 | Macro-F1 | Decisive | Near-tie |
@@ -453,14 +459,18 @@ deployed task, which measures a few beams, is in Tables VIII–X and XIV (best s
 | t+1 | Persistence | 93.7 | 86.3 | 94.5 | 98.6 | 69.2 (88%) | 0.45 | 89.8 | 62.3 |
 | t+1 | RF + sweep prior | 93.7 | 86.7 | 94.9 | 98.6 | 70.4 (89%) | 0.41 | – | – |
 | t+1 | GRU, hard label | 93.7 | 82.3 | 94.6 | 98.6 | 70.9 (90%) | 0.41 | 93.1 | 63.5 |
-| t+1 | GRU, soft target | 95.6 | 89.3 | 95.1 | 98.9 | 70.9 (90%) | 0.45 | **94.7** | 63.0 |
-| t+1 | **GRU ens., augmented** | **96.4** | **91.7** | 96.1 | **99.1** | 72.1 (91%) | 0.48 | 94.1 | 64.7 |
-| t+1 | GRU ens. + sweep, fused | 96.3 | 90.9 | **96.3** | **99.1** | **72.4 (92%)** | **0.49** | 94.0 | **65.3** |
+| t+1 | GRU, soft target | 95.6 | 89.3 | 95.1 | 98.9 | 70.9 (90%) | 0.45 | 94.7 | 63.0 |
+| t+1 | GRU ens., augmented | 96.4 | **91.7** | 96.1 | 99.1 | 72.1 (91%) | 0.48 | 94.1 | 64.7 |
+| t+1 | GRU ens. + sweep, fused | 96.3 | 90.9 | 96.3 | 99.1 | 72.4 (92%) | 0.49 | 94.0 | 65.3 |
+| t+1 | Stacked, power only | 97.0 | 91.6 | 96.9 | **99.2** | 74.6 (94%) | 0.49 | 95.6 | 67.6 |
+| t+1 | **Stacked, all sensing** | **97.2** | 91.1 | **97.3** | **99.2** | **75.6 (96%)** | **0.50** | **96.0** | **68.9** |
 | t+3 | Persistence | 78.1 | 66.1 | 80.3 | 93.7 | 53.3 (67%) | 0.26 | 69.2 | 47.9 |
 | t+3 | GRU, hard label | 73.2 | 57.9 | 80.6 | 93.1 | 49.5 (63%) | 0.21 | 73.6 | 41.5 |
 | t+3 | GRU, soft target | 81.1 | 65.8 | 84.8 | 95.5 | 55.3 (70%) | 0.24 | 78.6 | 47.5 |
-| t+3 | **GRU ens., augmented** | **86.0** | **75.5** | **86.9** | **96.8** | 56.7 (72%) | 0.28 | **78.7** | 49.4 |
-| t+3 | GRU ens. + sweep, fused | 85.2 | 74.7 | 86.5 | 96.5 | **57.3 (73%)** | **0.29** | 76.6 | **50.9** |
+| t+3 | GRU ens., augmented | 86.0 | 75.5 | 86.9 | 96.8 | 56.7 (72%) | 0.28 | 78.7 | 49.4 |
+| t+3 | GRU ens. + sweep, fused | 85.2 | 74.7 | 86.5 | 96.5 | 57.3 (73%) | 0.29 | 76.6 | 50.9 |
+| t+3 | Stacked, power only | 87.1 | 75.6 | 90.0 | 96.9 | 60.9 (77%) | 0.32 | 82.8 | 53.6 |
+| t+3 | **Stacked, all sensing** | **89.6** | **77.3** | **91.9** | **97.4** | **64.3 (81%)** | **0.34** | **86.3** | **56.9** |
 | any | *Noise bound (non-causal oracle)* | – | – | – | – | *79.0 (100%)* | *0.59* | – | – |
 
 **Where blind exact prediction fails** (Table VII, `blind_prediction_analysis.py`). Exact top-1 depends
@@ -474,33 +484,67 @@ chosen on the other folds' flights, adds 0.3 points of exact top-1 at t + 1 (72.
 (57.3%), and macro-F1 by 0.004 and 0.012, at the cost of 0.1–0.8 points of within-noise accuracy: the
 remaining gap to the 79% bound is the information in future sweeps that no causal predictor has.
 
-**Reduced beam training** (Table VIII, Fig. 5). Measuring a handful of predicted beams resolves the
+**Stacked blind predictor** (Table VII, Fig. 5, `blind_stacking.py`). No single model closes that gap, but the
+models make different errors, so we combine them. The components are the GRU variants of every
+side-information run (power only, GPS, UAV pixel, both), extra trees and LightGBM on long-history
+features (eight sub-beam peak positions and their steps, four sweeps, the lobe around the peak, side
+information), the last sweep, and a shifted template: the UAV's sub-beam peak (parabolic fit around the
+argmax) is tracked over the recent sweeps, the last sweeps are aligned on it and averaged, and the
+average is shifted by the predicted peak motion. Each component's scores are standardised per sample
+and summed with weights found by coordinate ascent on the four training folds (within-noise accuracy
+plus half the exact top-1), together with the template's three settings, and applied unchanged to the
+held-out fold. With power sweeps alone the stack raises exact top-1 from 72.1 to 74.6% at t + 1 and from
+56.7 to 60.9% at t + 3. With all sensing it reaches 75.6% [72.4, 78.4] at t + 1, 96% of the noise bound,
+and 64.3% [59.5, 68.8] at t + 3, with 97.2% and 89.6% within noise. On decisive labels it predicts the
+exact beam 96.0% of the time at t + 1 and 86.3% at t + 3. Over the 30 flights long enough for an
+eight-sweep window, the all-sensing stack beats the GRU ensemble by 3.6 points at t + 1 [1.9, 5.0] (24
+flights better, 4 worse) and 7.6 points at t + 3 [5.5, 10.0] (23 better, 6 worse); the power-only stack
+by 2.5 [0.9, 3.9] and 4.2 [2.7, 6.2] points (Wilcoxon, Holm p ≤ 0.0014 for all four). The largest weights go to the augmented
+ensembles of the power-only, GPS and GPS + UAV pixel runs, so position information that is not
+significant in one model (Table XIII) becomes useful once it is combined with the others. Exact top-1
+is still below 95%: in 75% of sweeps the label is decided by noise (above).
+
+![Fig. 5](figures/fig_blind_stacking.png)
+
+*Fig. 5. Blind exact top-1 per model on all samples (circles, 95% flight-bootstrap CI) and on decisive
+labels (squares), against the non-causal noise bound (dashed). Stacked: nested combination of Table VII.*
+
+**Reduced beam training** (Table VIII, Fig. 6). Measuring a handful of predicted beams resolves the
 near-ties that blind prediction cannot. At t + 1, the GRU ensemble with the tie graph selects the exact
 optimal beam 99.3% of the time with macro-F1 0.961 over all 56 classes, measuring 7 of 64 beams in
 0.55 ms; the 95% interval of exact top-1 lies above 95%. At t + 3, the same scheme reaches 99.1% exact
 top-1 and macro-F1 0.974 over beams with at least five samples, with 11.7 beams. The single-burst
 variant reaches 98.9% / 0.971 in 1.22 ms. Every scheme in Table VIII also keeps at least 99.5% of
-decisions within the 0.25 dB noise floor and at least 99.8% of the best beam's power.
+decisions within the 0.25 dB noise floor and at least 99.8% of the best beam's power. The stacked blind
+predictor of Table VII also shortens the shortlist: at t + 1 the power-only stack, in a single round,
+matches the two-round GRU scheme (99.3%, macro-F1 0.961) with 6.4 instead of 7.0 beams and no second
+round (0.50 ms). At t + 3 the all-sensing stack reaches 99.3% exact top-1 with 14.8 beams in one round
+(1.16 ms) and, with the tie graph, 99.4% and all-class macro-F1 0.935; the rarely seen beams keep the
+latter below 0.95.
 
 *Table VIII. Reduced beam training (open-loop: full-sweep history assumed), nested-CV operating points,
 scored against the full-sweep ground truth [95% CI over sequences]. Latency: beam-training time under 5G NR FR2 timing (full sweep: 5 ms).
-Macro-F1 ≥ 5: over beam classes with at least five samples.*
+Macro-F1 ≥ 5: over beam classes with at least five samples. Stacked: the nested stack of Table VII
+("all sensing" adds GPS and the camera's UAV pixel).*
 
 | Horizon | Shortlist | Beams | Latency (ms) | Exact top-1 (%) | Macro-F1 (56 classes) | Macro-F1 ≥ 5 |
 |---|---|---|---|---|---|---|
 | t+1 | Last sweep, K = 4 (85% target) | 4.2 | 0.33 | 97.6 [96.4, 98.5] | 0.871 [0.829, 0.912] | 0.945 |
 | t+1 | Last sweep, K = 6 | 6.0 | 0.47 | 99.1 [98.6, 99.5] | 0.960 [0.940, 0.985] | 0.981 |
-| t+1 | **GRU ensemble + tie graph, two-round** | **7.0** | **0.55** | **99.3 [98.7, 99.7]** | **0.961 [0.941, 0.990]** | **0.985** |
+| t+1 | GRU ensemble + tie graph, two-round | 7.0 | 0.55 | 99.3 [98.7, 99.7] | 0.961 [0.941, 0.990] | 0.985 |
 | t+1 | GRU ensemble + last sweep, burst | 6.4 | 0.50 | 99.2 [98.7, 99.6] | 0.955 [0.940, 0.977] | 0.984 |
+| t+1 | **Stacked (power only), single round** | **6.4** | **0.50** | **99.3 [98.9, 99.7]** | **0.961 [0.943, 0.989]** | **0.986** |
 | t+3 | Last sweep, K = 16 | 16.0 | 1.25 | 97.9 [96.6, 98.8] | 0.860 [0.823, 0.906] | 0.956 |
 | t+3 | GRU ensemble, single round | 15.2 | 1.19 | 98.9 [98.0, 99.5] | 0.896 [0.864, 0.944] | 0.965 |
 | t+3 | Last sweep + tie graph, two-round | 13.9 | 2.11 | 99.4 [98.9, 99.7] | 0.914 [0.889, 0.956] | 0.979 |
 | t+3 | **GRU ensemble + tie graph, two-round** | **11.7** | **1.93** | **99.1 [98.3, 99.7]** | **0.929 [0.905, 0.964]** | **0.974** |
 | t+3 | GRU ensemble + tie graph, burst | 15.6 | 1.22 | 98.9 [98.1, 99.6] | 0.912 [0.880, 0.949] | 0.971 |
+| t+3 | Stacked (all sensing), single round | 14.8 | 1.16 | 99.3 [98.9, 99.7] | 0.897 [0.867, 0.965] | 0.978 |
+| t+3 | Stacked (all sensing) + tie graph, two-round | 13.6 | 2.09 | 99.4 [98.9, 99.8] | 0.935 [0.910, 0.972] | 0.979 |
 
-![Fig. 5](figures/fig_beam_training.png)
+![Fig. 6](figures/fig_beam_training.png)
 
-*Fig. 5. Exact top-1 (left) and all-class macro-F1 (right) versus beams measured at t + 1 (top) and
+*Fig. 6. Exact top-1 (left) and all-class macro-F1 (right) versus beams measured at t + 1 (top) and
 t + 3 (bottom), out-of-fold predictions; dashed: 95% target; dotted: non-causal blind-prediction
 ceiling.*
 
@@ -514,16 +558,16 @@ Each such class costs 1/56 ≈ 0.018 of macro-F1. Over classes with at least fiv
 scheme with the tie graph exceeds 0.97. Pooled curves reach 0.95 all-class with 16–18 beams, but
 settings selected on four folds do not hold it on the fifth, so we report the nested values.
 
-**Conformal shortlists** (Fig. 6). Calibrated for 95% exact top-1, the rank-based set reaches 96.1% with 3 beams
+**Conformal shortlists** (Fig. 7). Calibrated for 95% exact top-1, the rank-based set reaches 96.1% with 3 beams
 at t + 1 (worst held-out fold 95.3%) and 95.5% with 5.4 beams at t + 3 (worst fold 92.7%); for a 99%
 target, 99.2% with 6.2 beams and 99.0% with 17.4 beams. Coverage tracks the target on average, but a
 single flight group can fall short by up to 2.3 points, which is the cost of non-exchangeable flights.
 Adaptive sets over-cover (98.8% for a 95% target at t + 1) with a 95th-percentile size of 41–56 beams,
 which is worse for worst-case latency.
 
-![Fig. 6](figures/fig_conformal.png)
+![Fig. 7](figures/fig_conformal.png)
 
-*Fig. 6. Conformal shortlists (rank score, GRU ensemble). Left: achieved exact top-1 versus the target,
+*Fig. 7. Conformal shortlists (rank score, GRU ensemble). Left: achieved exact top-1 versus the target,
 pooled over held-out folds (solid) and for the worst fold (dotted); dashed: achieved = target. Right:
 mean beams measured.*
 
@@ -547,7 +591,7 @@ uses the best beam with no training time, at nominal best-beam SNR of 0 / 10 / 2
 | Window ±1, loss-triggered sweeps only | 75.5 | 83.2 | 0.35 | 92.9 / 95.0 / 96.8 |
 | Window ±1 + 6 tie partners, loss-triggered only | 96.1 | 96.9 | 0.64 | 98.5 / 98.9 / 99.2 |
 
-**Learned tracking in the loop** (Table X, Fig. 7). At equal budget, every learned model is below the
+**Learned tracking in the loop** (Table X, Fig. 8). At equal budget, every learned model is below the
 tie graph. With two extra beams, the tracker with six tie partners reaches 99.16% exact top-1 at 1.18 ms,
 while the ten models reach 98.17–98.71%; with four extra beams, 99.28% against 98.59–98.83%. The models
 differ from each other by at most 0.6 points, so architecture and the training settings we varied matter
@@ -576,13 +620,13 @@ beam-training critical path.
 | GRU, W = 16 | 89.3 | 98.29 | 98.64 | 0.91 | 1.67 |
 | GRU, hard target | 91.2 | 98.71 | 98.83 | 0.56 | 1.04 |
 
-![Fig. 7](figures/fig_closed_loop.png)
+![Fig. 8](figures/fig_closed_loop.png)
 
-*Fig. 7. Closed loop. Left: exact top-1 versus mean beam-training latency for every policy (log scale);
+*Fig. 8. Closed loop. Left: exact top-1 versus mean beam-training latency for every policy (log scale);
 dashed: 95%. Right: at equal budget, extra beams chosen by the tie graph (line) versus by each of the
 ten learned models (squares).*
 
-**Position- and vision-aided prediction** (Tables XI–XII, Fig. 8). The full Scenario 23 release adds, for every sample,
+**Position- and vision-aided prediction** (Tables XI–XII, Fig. 9). The full Scenario 23 release adds, for every sample,
 the UAV's GPS position, speed, velocity components, height, pitch and roll. We convert the GPS fix to
 east/north offsets from the base station and its bearing, append these and the raw kinematic channels
 to every step of each model's input window, and repeat the blind-prediction study with the same folds.
@@ -617,11 +661,12 @@ Alone, the UAV pixel identifies the current beam within noise 80.4% of the time 
 67.4% for the generic embedding and 14.9% for the most frequent beam (Table XII), so localising the UAV
 is what turns the image into beam information. For blind prediction from power sweeps, however, no side
 information gives a significant gain (Table XI, Table XIII). Position helps most further ahead: at t + 3,
-pooled within-noise accuracy rises by 4.2 points for the random forest (78.5 → 82.7%) and by 1.1 for the
-GRU ensemble (86.0 → 87.2%), and by 1.3 with GPS and the UAV pixel together (87.3%), but per flight these
-gains are not significant (16 flights better, 11 worse; Wilcoxon p = 0.34 and 0.40, Holm 0.68). At t + 1
+pooled within-noise accuracy rises by 4.2 points for the random forest (78.5 → 82.7%) and by 1.4 for the
+GRU ensemble (86.0 → 87.4%), and by 1.3 with GPS and the UAV pixel together (87.3%), but per flight these
+gains are not significant on their own (16 flights better, 13 worse; Holm p = 0.64). Combined with the
+power-only models in the stack of Table VII, the same runs do add significantly. At t + 1
 every change is below one point: the last sweep already encodes where the UAV is. The generic embedding
-hurts: it lowers every model at both horizons, the GRU ensemble at t + 3 by 5.6 points (worse on 23 of 33
+hurts: it lowers every model at both horizons, the GRU ensemble at t + 3 by 5.6 points (worse on 23 of 30
 flights, Holm p < 10⁻⁴), because with 35 flights 16 scene features let the models fit flight-specific
 appearance that does not transfer. Exact top-1 changes by −5.0 to +3.7 points across configurations and
 stays far below the 79% noise ceiling in all of them, as it must.
@@ -659,9 +704,9 @@ sequences).*
 | t+3 | Embedding, MLP | 43.2 | 36.4 | 53.7 | 24.9 | 0.09 |
 | t+3 | UAV pixel, random forest | **56.9** | **43.1** | **65.9** | **37.2** | **0.11** |
 
-![Fig. 8](figures/fig_side_information.png)
+![Fig. 9](figures/fig_side_information.png)
 
-*Fig. 8. Blind within-noise accuracy with each set of side information; dashed: persistence. Each series
+*Fig. 9. Blind within-noise accuracy with each set of side information; dashed: persistence. Each series
 has its own marker shape.*
 
 **Position-aided beam training.** Rerunning the reduced beam training and conformal studies on the
@@ -673,7 +718,7 @@ t + 1 every operating point stays within 0.3 points. The 95% conformal shortlist
 instead of 5.4 beams and its worst fold rises from 92.7 to 94.3% coverage. Position raises all-class
 macro-F1 at t + 3, but its lower confidence bound stays below 0.95: the singleton classes remain.
 
-**Significance** (Table XIII, Fig. 9). Across the 33 replayed flights, the tie-graph tracker (four
+**Significance** (Table XIII, Fig. 10). Across the 33 replayed flights, the tie-graph tracker (four
 partners, full sweep every 8 steps) loses 2.8 points of exact top-1 against a full sweep every step on
 27 flights and ties on 6, yet gains 2.6 points of effective spectral efficiency at 10 dB on 32 of 33
 flights, because it spends 1.05 instead of 5 ms on training. Six partners improve exact top-1 by 2.0
@@ -684,7 +729,9 @@ few, so the pooled difference is negative with a CI that includes zero; this pol
 better.
 
 *Table XIII. Paired per-flight comparisons (A − B, percentage points; 95% flight-bootstrap CI; Wilcoxon
-signed-rank, Holm-corrected within family; flights where A is better / tied / worse).*
+signed-rank, Holm-corrected within family; flights where A is better / tied / worse). Blind rows: 30
+flights long enough for an eight-sweep window; the blind family also includes exact top-1 rows (in
+`significance_tests.json`), none significant except the camera embedding (worse, Holm p ≤ 0.04).*
 
 | Family | A | B | Metric | A − B [95% CI] | Holm p | Better / tied / worse |
 |---|---|---|---|---|---|---|
@@ -696,22 +743,24 @@ signed-rank, Holm-corrected within family; flights where A is better / tied / wo
 | Closed loop | 4 partners, full /4 | 4 partners, full /8 | SE, 10 dB | −0.33 [−0.38, −0.27] | < 10⁻⁴ | 2 / 1 / 30 |
 | Closed loop | 4 partners, full /8 | Window ±1, full /4 | Exact top-1 | +5.95 [+4.28, +7.73] | < 10⁻⁴ | 30 / 3 / 0 |
 | Closed loop | 6 partners, loss-triggered | 4 partners, full /8 | Exact top-1 | −1.08 [−4.73, +1.41] | 0.01 | 22 / 7 / 4 |
-| Blind t+1 | GRU ens. + GPS | GRU ens., power | Within noise | +0.05 [−0.29, +0.39] | 1.0 | 10 / 8 / 12 |
+| Blind t+1 | GRU ens. + GPS | GRU ens., power | Within noise | +0.05 [−0.26, +0.34] | 1.0 | 10 / 10 / 10 |
 | Blind t+1 | GRU ens. + camera emb. | GRU ens., power | Within noise | −0.49 [−0.78, −0.21] | 0.020 | 4 / 9 / 17 |
-| Blind t+1 | GRU ens. + GPS + UAV pixel | GRU ens., power | Within noise | +0.13 [−0.24, +0.47] | 1.0 | 14 / 7 / 9 |
-| Blind t+3 | GRU ens. + GPS | GRU ens., power | Within noise | +1.12 [−0.08, +2.38] | 0.68 | 16 / 3 / 11 |
+| Blind t+1 | GRU ens. + GPS + UAV pixel | GRU ens., power | Within noise | +0.03 [−0.26, +0.30] | 1.0 | 7 / 12 / 11 |
+| Blind t+3 | GRU ens. + GPS | GRU ens., power | Within noise | +1.33 [−0.02, +2.77] | 0.64 | 16 / 1 / 13 |
 | Blind t+3 | GRU ens. + camera emb. | GRU ens., power | Within noise | −5.55 [−7.88, −3.29] | < 10⁻⁴ | 2 / 5 / 23 |
-| Blind t+3 | GRU ens. + GPS + camera emb. | GRU ens., power | Within noise | −1.07 [−2.78, +0.32] | 0.26 | 9 / 3 / 18 |
-| Blind t+3 | GRU ens. + UAV pixel | GRU ens., power | Within noise | −1.55 [−3.45, −0.12] | 0.26 | 8 / 6 / 16 |
-| Blind t+3 | GRU ens. + GPS + UAV pixel | GRU ens., power | Within noise | +1.26 [−0.27, +2.74] | 0.68 | 16 / 3 / 11 |
+| Blind t+3 | GRU ens. + GPS + camera emb. | GRU ens., power | Within noise | −0.44 [−1.94, +1.00] | 0.64 | 10 / 5 / 15 |
+| Blind t+3 | GRU ens. + UAV pixel | GRU ens., power | Within noise | −1.41 [−3.18, −0.12] | 0.64 | 9 / 5 / 16 |
+| Blind t+3 | GRU ens. + GPS + UAV pixel | GRU ens., power | Within noise | +1.24 [−0.28, +2.70] | 0.64 | 18 / 2 / 10 |
+| Stacking t+1 | Stacked, all sensing | GRU ens., power | Exact top-1 | +3.59 [+1.85, +5.05] | < 0.001 | 24 / 2 / 4 |
+| Stacking t+3 | Stacked, all sensing | GRU ens., power | Exact top-1 | +7.58 [+5.49, +9.99] | 0.001 | 23 / 1 / 6 |
 
-![Fig. 9](figures/fig_significance.png)
+![Fig. 10](figures/fig_significance.png)
 
-*Fig. 9. Paired per-flight differences with 95% flight-bootstrap CIs. Filled: Wilcoxon signed-rank on
+*Fig. 10. Paired per-flight differences with 95% flight-bootstrap CIs. Filled: Wilcoxon signed-rank on
 per-flight differences, Holm p < 0.05. The two can disagree when most flights improve but a few lose
 heavily (bottom left).*
 
-**Sensing-aided closed-loop tracking** (Table XIV, Fig. 10). Side information that does not help blind
+**Sensing-aided closed-loop tracking** (Table XIV, Fig. 11). Side information that does not help blind
 prediction can still help the tracker, because there it only has to propose candidates that are then
 measured. In the closed-loop replay of Table IX we add, at every step, the top k beams of a random
 forest that maps the previous step's sensing (UAV pixel, GPS, or both) to the current best beam. Using
@@ -719,44 +768,61 @@ the previous frame keeps the predictor causal and leaves one sweep interval for 
 predictor and the tie graph are fitted on the other folds' flights. The extra candidates replace the
 periodic full sweeps: a full sweep now follows only a beam loss.
 
-With camera and GPS candidates (k = 4), the tracker selects the exact best beam 99.19% of the time with
+With camera and GPS candidates (k = 4), the tracker selects the exact best beam 99.24% of the time with
 7.0 beams and 0.56 ms per decision, against 97.15% with 13.2 beams and 1.05 ms for the tie-graph tracker
 with periodic sweeps: better on 25 flights and worse on 1, with lower latency on 30 of 33 flights. It
 matches the tracker with eight tie partners (99.28%) at 43% of its latency (1.31 ms), and delivers 99.59%
-of the genie's spectral efficiency at 10 dB, within 0.03 points of the best policy (99.62%, k = 2). The camera alone (98.57%,
-0.59 ms) and GPS alone (99.12%, 0.59 ms) are each enough for most of the gain. Without side
-information, dropping the periodic sweeps costs 4.5 points (92.70%), so the candidates are what make
-loss-triggered sweeps safe. Without tie partners, camera candidates are not enough (96.12%): the camera
-locates the UAV, the tie graph resolves which of the beams near that direction is strongest. Full sweeps
-remain for beam loss in 1.8% of steps, so the 95th-percentile latency of the worst flight is 6 ms. The
-gain extends to rare beams: macro-F1 rises from 0.934 to 0.980 over beams with at least five steps (0.843
-to 0.944 over all classes, where beams seen once or twice still dominate), so in closed loop the
-sensing-aided tracker meets the 95% target on exact top-1 and macro-F1 at half the latency.
+of the genie's spectral efficiency at 10 dB, within 0.03 points of the best policy (99.62%, k = 2). The
+camera alone (98.44%, 0.59 ms) and GPS alone (99.12%, 0.59 ms) are each enough for most of the gain.
+Without side information, dropping the periodic sweeps costs 4.5 points (92.70%), so the candidates are
+what make loss-triggered sweeps safe. Without tie partners, camera candidates are not enough (96.08%):
+the camera locates the UAV, the tie graph resolves which of the beams near that direction is strongest.
+Full sweeps remain for beam loss in 1.8% of steps, so the 95th-percentile latency of the worst flight is
+6 ms. The gain extends to rare beams: macro-F1 rises from 0.934 to 0.984 over beams with at least five
+steps and from 0.843 to 0.951 over all 56 classes. Rare beams are what limit all-class macro-F1, and a
+few more candidates reach them: six camera + GPS candidates give 99.46% exact top-1 and all-class
+macro-F1 0.972 with 8.2 beams (0.66 ms), and four candidates with six tie partners give 99.57% and
+0.963 / 0.992 with 8.4 beams (0.67 ms), better than the tracker on 27 flights and worse on none. In
+closed loop the sensing-aided tracker therefore meets the 95% target on exact top-1, within-noise
+accuracy and macro-F1 over all classes, at 13% of the latency of a full sweep.
+
+**Stale GPS and the latency model.** The camera is at the base station, but the GPS fix has to be sent
+by the UAV. When it arrives 2, 4 or 8 steps late (0.28, 0.57 and 1.1 s), GPS top-4 candidates give
+99.16, 98.69 and 98.10% exact top-1; with the camera, which stays one frame old, 99.17, 98.97 and 98.84%.
+Every one of these stays above the tracker with periodic sweeps (Holm p < 0.001), so the scheme degrades
+gracefully with GPS delay and the camera carries it when GPS is late. The 5G NR FR2 timing is an
+assumption too, so we rescaled each replayed decision with a per-beam time of 39, 78 or 156 µs and a
+report round trip of 0.5, 1 or 2 ms. Camera + GPS top-4 then needs 0.28–1.13 ms per decision, against
+0.52–2.09 ms for the tracker and 2.5–10 ms for full sweeps, and keeps the highest effective spectral
+efficiency of the three in all nine cases (99.2–99.8% of the genie). The ordering of the policies does
+not depend on the timing values.
 
 *Table XIV. Closed-loop replay of 33 flights with camera (UAV pixel) and GPS candidates; "+ T": with the
-four-partner tracker; "loss": full sweeps only on beam loss (1.8% of steps; tracker with full every 8: 13.9%). Macro-F1 over
+four-partner tracker ("T6": six partners); "loss": full sweeps only on beam loss (1.8% of steps; tracker with full every 8: 13.9%). Macro-F1 over
 all best-beam classes / classes with at least five steps. ms: mean beam-training time
 per decision (95th percentile on the worst flight: 6.0 ms, full sweep every step 5.0 ms). SE: effective
 spectral efficiency at 10 dB, % of genie. Δ: change in exact top-1 against the tracker with full sweeps
-every 8 steps (points, 95% flight-bootstrap CI); B / T / W: flights better / tied / worse; Holm p ≤ 0.007
-except (a), p = 0.09.*
+every 8 steps (points, 95% flight-bootstrap CI); B / T / W: flights better / tied / worse; Holm p ≤ 0.01
+except (a), p = 0.06.*
 
 | Policy | Beams | ms | Top-1 (%) | Macro-F1 (all / ≥ 5) | In noise (%) | SE (%) | Δ top-1 [95% CI] | B / T / W |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Full sweep every step | 64.0 | 5.00 | 100.00 | 1.000 / 1.000 | 100.00 | 96.51 | +2.85 [+1.82, +4.05] | 27 / 6 / 0 |
+| Full sweep every step | 64.0 | 5.00 | 100.00 | 1.000 / 1.000 | 100.00 | 96.51 | +2.85 [+1.83, +4.08] | 27 / 6 / 0 |
 | Tracker, full every 8 | 13.2 | 1.05 | 97.15 | 0.843 / 0.934 | 99.19 | 99.12 | reference | – |
-| Tracker, loss | 6.1 | 0.49 | 92.70 | 0.708 / 0.845 | 95.31 | 98.25 | −4.45 [−9.39, −1.07] | 2 / 18 / 13 |
-| Camera top-2 + T, loss | 6.5 | 0.52 | 97.82 | 0.875 / 0.947 | 99.49 | 99.55 | +0.67 [+0.36, +1.05] | 18 / 13 / 2 |
-| Camera top-4 + T, loss | 7.4 | 0.59 | 98.57 | 0.914 / 0.961 | 99.69 | 99.54 | +1.41 [+0.88, +2.05] | 23 / 9 / 1 |
-| Camera top-4, window only, loss (a) | 6.2 | 0.50 | 96.12 | 0.780 / 0.883 | 98.93 | 99.53 | −1.04 [−1.87, −0.25] | 9 / 4 / 20 |
-| GPS top-2 + T, loss | 6.5 | 0.52 | 98.63 | 0.930 / 0.966 | 99.79 | 99.61 | +1.48 [+0.92, +2.16] | 24 / 8 / 1 |
-| GPS top-4 + T, loss | 7.3 | 0.59 | 99.12 | 0.943 / 0.979 | **99.88** | 99.57 | +1.97 [+1.26, +2.75] | 25 / 7 / 1 |
-| Camera + GPS top-2 + T, loss | 6.3 | **0.51** | 98.67 | 0.927 / 0.970 | 99.82 | **99.62** | +1.51 [+0.93, +2.21] | 24 / 8 / 1 |
-| **Camera + GPS top-4 + T, loss** | **7.0** | **0.56** | **99.19** | **0.944 / 0.980** | **99.88** | 99.59 | **+2.04 [+1.26, +2.89]** | **25 / 7 / 1** |
+| Tracker, loss | 6.1 | 0.49 | 92.70 | 0.708 / 0.845 | 95.31 | 98.25 | −4.45 [−9.35, −1.00] | 2 / 18 / 13 |
+| Camera top-2 + T, loss | 6.5 | 0.52 | 97.80 | 0.877 / 0.947 | 99.48 | 99.54 | +0.65 [+0.35, +1.04] | 17 / 13 / 3 |
+| Camera top-4 + T, loss | 7.4 | 0.59 | 98.44 | 0.893 / 0.959 | 99.64 | 99.52 | +1.28 [+0.82, +1.86] | 24 / 9 / 0 |
+| Camera top-4, window only, loss (a) | 6.2 | 0.50 | 96.08 | 0.776 / 0.877 | 98.95 | 99.52 | −1.07 [−1.90, −0.30] | 8 / 4 / 21 |
+| GPS top-2 + T, loss | 6.5 | 0.52 | 98.62 | 0.930 / 0.967 | 99.78 | 99.61 | +1.47 [+0.91, +2.14] | 24 / 8 / 1 |
+| GPS top-4 + T, loss | 7.3 | 0.59 | 99.12 | 0.944 / 0.979 | **99.89** | 99.58 | +1.97 [+1.26, +2.76] | 25 / 7 / 1 |
+| Camera + GPS top-2 + T, loss | 6.3 | **0.51** | 98.71 | 0.932 / 0.972 | 99.81 | **99.62** | +1.55 [+0.96, +2.27] | 24 / 8 / 1 |
+| Camera + GPS top-4 + T, loss | 7.0 | 0.56 | 99.24 | 0.951 / 0.984 | 99.88 | 99.59 | +2.08 [+1.31, +2.97] | 25 / 7 / 1 |
+| Camera + GPS top-6 + T, loss | 8.2 | 0.66 | 99.46 | **0.972** / 0.988 | **99.89** | 99.53 | +2.31 [+1.48, +3.29] | 26 / 6 / 1 |
+| **Camera + GPS top-4 + T6, loss** | 8.4 | 0.67 | **99.57** | 0.963 / **0.992** | **99.89** | 99.52 | **+2.42 [+1.59, +3.36]** | **27 / 6 / 0** |
 
-![Fig. 10](figures/fig_side_tracking.png)
+![Fig. 11](figures/fig_side_tracking.png)
 
-*Fig. 10. Closed loop with camera and GPS candidates: exact top-1 (left) and effective spectral efficiency
+*Fig. 11. Closed loop with camera and GPS candidates: exact top-1 (left) and effective spectral efficiency
 at 10 dB (right) against mean beam-training latency (log scale).*
 
 ---
@@ -785,23 +851,36 @@ On this dataset, the useful structure is which beams tie, and a co-occurrence co
 report this negative result because it bounds what learning adds once measurement is cheap. The soft
 target and beam-axis augmentation matter more than the architecture. Logit adjustment for the class
 imbalance [19] lowered every metric because the beam distribution differs between flights. Side
-information follows the same pattern for blind prediction: UAV position gives a small, not yet
-significant gain at 0.4 s, and generic camera features hurt, because 35 flights are too few to learn
-which parts of a scene matter. The same sensing pays off as soon as its output is measured rather than
+information follows the same pattern for blind prediction: in any single model UAV position gives a
+small, not significant gain at 0.4 s, and generic camera features hurt, because 35 flights are too few
+to learn which parts of a scene matter. Combining models helps more than any one of them: the nested
+stack gains 3.6 points of exact top-1 at t + 1 and 7.6 at t + 3, and it is there that position becomes
+useful. The same sensing pays off as soon as its output is measured rather than
 trusted: as candidates in the tracker, the located UAV and its GPS halve the training latency and raise
-exact top-1 on 25 of 33 flights, with one worse (Table XIV). Making the camera useful took a hand-built locator, not
+exact top-1 on 25 of 33 flights, with one worse, and two more candidates bring the rarely seen beams
+above 0.95 macro-F1 (Table XIV). Making the camera useful took a hand-built locator, not
 a larger model.
 
-**Limitations.** Saleh and coupling coefficients are literature values, not measurements of a 60 GHz
-PA or RIS; Table II bounds the effect of the coupling strength. The obliquity exponent is assumed. The physical-layer results are simulated; the
-beam-prediction results use power sweeps only except in Tables XI–XII; the UAV locator assumes a sky background
-and is checked by inspection and against GPS direction, not against labelled positions, which Scenario 23
-does not provide (about 1% of frames are misdetected); the
-sensing-aided tracker assumes the UAV's GPS reaches the base station within one sweep interval; the UAV height channel's unit is not documented consistently. The all-class macro-F1 at t + 3 (0.929) is limited by beams
-seen only once; more flights, not a different model, are needed to estimate it reliably. The latency
-model uses standard 5G NR FR2 timing, not the testbed's own sweep timing. The Table VIII figures are
-open-loop (they assume full-sweep history); Table IX gives the closed-loop figures. Effective spectral
-efficiency is reported at nominal SNRs because the dataset's powers are unitless. The D-band transceiver values are representative published figures, not a specific design.
+**Limitations, and what was done about each.** (i) *Hardware coefficients.* The Saleh and coupling
+coefficients are literature values, not measurements of a 60 GHz PA or RIS. Table II bounds the effect
+of the coupling strength, and Sec. VI-A shows that the conclusions hold for PA back-off of 3–12 dB,
+obliquity exponents of 0–2 and D-band transmit power of 11–17 dBm. Measured coefficients need hardware
+we do not have. (ii) *Simulation.* The physical-layer results are simulated; only the beam-management
+results use measurements. (iii) *Inputs.* Tables VII and XI–XIV use GPS and camera; the other tables use
+power sweeps only, so that they can be reproduced from the beam CSV shipped with the repository.
+(iv) *Locator.* It assumes a sky background and is checked against GPS (median 4.5 m) and by
+inspection, not against labelled positions, which Scenario 23 does not provide; after the causal gate,
+0.95% of frame pairs still jump by more than 100 px. (v) *GPS delay and timing.* Both were assumptions
+of the first replay; the stale-GPS and timing sensitivity in Sec. VI-D shows that neither changes the
+conclusions. (vi) *Height unit.* The dataset does not document it; the constant altitude–height offset
+shows that it is feet, and we convert it. (vii) *Rare beams.* Seven of the 56 best-beam classes have
+fewer than five samples (10 samples, 0.09% of the data) but carry 12.5% of the macro-F1 weight, and five
+occur in a single flight. They limit all-class macro-F1 of blind prediction and of reduced beam training
+at t + 3 (0.93); in closed loop, two more candidates reach them (0.97). Estimating their performance
+reliably needs more flights, not a different model. (viii) *Blind exact top-1* is bounded at 79% by
+measurement noise; no method on this data can reach 95% without measuring beams. (ix) *Open loop.*
+Table VIII assumes full-sweep history; Tables IX, X and XIV give the closed-loop figures. (x) *SNR.*
+Effective spectral efficiency is reported at nominal SNRs because the dataset's powers are unitless.
 
 ---
 
@@ -816,10 +895,12 @@ Kalman-based prediction preserves 99.3% of the array gain at 500 ms latency; and
 training with a learned beam-tie graph selects the exact optimal beam 99.3% of the time given full-sweep
 history and 97.2–99.3% in a closed-loop replay of 33 flights, with 1.05–1.31 ms of beam training per
 decision instead of 5 ms; with candidates from the UAV's GPS and its position in the camera image it
-reaches 99.2% (macro-F1 0.98 over beams with at least five samples) with 0.56 ms and no periodic sweeps. Deep sequence models trained on measured-only data did
-not improve on the tie graph at equal budget. All reported metrics are evaluated under sequence-level cross-validation. UAV position raises pooled blind accuracy at a 0.4 s
-horizon by 1–4 points, a gain that is not significant across flights for the best model, and frozen
-generic camera features lower it. Future work will validate the camera locator against labelled UAV
+reaches 99.2–99.6% with 0.56–0.67 ms and no periodic sweeps, with macro-F1 0.97 over all 56 beam classes
+for six candidates, and stays above 98.8% when the GPS is 1.1 s old. Deep sequence models trained on
+measured-only data did not improve on the tie graph at equal budget. For blind prediction, a nested
+stack of all models reaches 75.6% exact top-1 at 140 ms, 96% of the noise bound; position and camera
+features add significantly only inside this stack, and frozen generic camera features lower every
+single model. All reported metrics are evaluated under sequence-level cross-validation. Future work will validate the camera locator against labelled UAV
 positions, add flights to estimate rare-beam performance, and use measured hardware coefficients.
 
 ---
@@ -913,16 +994,18 @@ NeurIPS*, vol. 33, 2020.
 | Sec. VI-B, Tables IV–V | `run_physical_layer.py` (`parametric_study`, `adaptive_study`, `closed_loop_study`) | same |
 | Sec. VI-C, Table VI, Fig. 4 | `tracking_eval.py` | `results/tracking_metrics.json` |
 | Sec. VI-D, Table VII | `beam_prediction.py`, `beam_sequence_model.py`; decisive / near-tie split and fused row: `blind_prediction_analysis.py` (`BEAM_RESULTS_DIR=results/power_only`) | `results/beam_*_metrics.csv` |
-| Sec. VI-D, Table VIII, Fig. 5 | `beam_training_overhead.py` (after `beam_sequence_model.py`) | `results/beam_training_overhead.json` |
+| Sec. VI-D, Table VIII, Fig. 6 | `beam_training_overhead.py` (after `beam_sequence_model.py`) | `results/beam_training_overhead.json` |
 | Sec. VI-D, conformal shortlists | `conformal_beam_training.py` (after `beam_sequence_model.py`) | `results/conformal_beam_training.json` |
 | Sec. VI-D, Table IX | `closed_loop_beam_tracking.py` | `results/closed_loop_beam_tracking.json` |
-| Sec. VI-D, Table X, Fig. 7 | `closed_loop_learned_tracking.py` | `results/closed_loop_learned_tracking.json` |
-| Sec. VI-D, Table XI, Fig. 8 | `beam_prediction.py`, `beam_sequence_model.py` with the full Scenario 23 download and `SCENARIO23_FEATURES` = `power`, `auto` (GPS), `camera`, `gps+camera`, `uav_pixel` or `gps+uav_pixel`, each with `BEAM_RESULTS_DIR` set to its own folder | `results/power_only/`, `results/gps/`, `results/camera/`, `results/gps_camera/`, `results/uav_pixel/`, `results/gps_uav_pixel/` |
+| Sec. VI-D, Table X, Fig. 8 | `closed_loop_learned_tracking.py` | `results/closed_loop_learned_tracking.json` |
+| Sec. VI-D, Table XI, Fig. 9 | `beam_prediction.py`, `beam_sequence_model.py` with the full Scenario 23 download and `SCENARIO23_FEATURES` = `power`, `auto` (GPS), `camera`, `gps+camera`, `uav_pixel` or `gps+uav_pixel`, each with `BEAM_RESULTS_DIR` set to its own folder | `results/power_only/`, `results/gps/`, `results/camera/`, `results/gps_camera/`, `results/uav_pixel/`, `results/gps_uav_pixel/` |
 | Sec. VI-D, Table XII | `camera_beam_prediction.py --extract --locate` (needs torchvision) | `results/camera_beam_prediction.json` |
 | Sec. VI-D, locator check | `camera_beam_prediction.py --validate` | `results/camera_locator_validation.json` |
 | Sec. VI-A, Table III (NF rows) | `run_physical_layer.py` (`ris_sizing_140ghz_nf_sensitivity`) | `results/physical_layer_metrics.json` |
 | Sec. VI-A, assumed values | `run_physical_layer.py` (`assumption_sensitivity`) | `results/physical_layer_metrics.json` |
-| Sec. VI-D, Table XIV, Fig. 10 | `closed_loop_side_tracking.py` (after `--locate`) | `results/closed_loop_side_tracking.json` |
+| Sec. VI-D, Table XIV, Fig. 11 | `closed_loop_side_tracking.py` (after `--locate`) | `results/closed_loop_side_tracking.json` |
 | Sec. VI-D, GPS-aided beam training | `BEAM_RESULTS_DIR=results/gps` with `beam_training_overhead.py`, `conformal_beam_training.py` | `results/gps/` |
-| Sec. VI-D, Table XIII, Fig. 9 | `significance_tests.py` (after the runs above and `closed_loop_beam_tracking.py`) | `results/significance_tests.json` |
+| Sec. VI-D, Table XIII, Fig. 10 | `significance_tests.py` (after the runs above and `closed_loop_beam_tracking.py`) | `results/significance_tests.json` |
+| Sec. VI-D, Table VII (stacked rows), Fig. 5 | `blind_stacking.py` (after all six side-information runs) | `results/blind_stacking.json` |
+| Sec. VI-D, Table VIII (stacked rows) | `BEAM_RESULTS_DIR=results/stacked_power` and `results/stacked_all` with `beam_training_overhead.py` | `results/stacked_*/beam_training_overhead.json` |
 | All figures | `make_figures.py` | `paper/figures/` |

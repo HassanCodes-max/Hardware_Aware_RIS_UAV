@@ -141,6 +141,8 @@ def shortlist_rankings(
         "gru_soft+sweep": np.argsort(-fused, axis=1),
         "gru_aug_ens": np.argsort(-data["gru_soft_aug_ens"], axis=1),
         "gru_aug_ens+sweep": np.argsort(-(zscore(data["gru_soft_aug_ens"]) + zscore(last)), axis=1),
+        # Nested stack of blind_stacking.py, when that script saved one next to the GRU scores.
+        **({"stacked": np.argsort(-data["stacked"], axis=1)} if "stacked" in data else {}),
     }
 
 
@@ -486,7 +488,8 @@ def main() -> None:
         # Two-round search. Curves use, for each fold, a tie graph fitted on
         # the other four folds, so every curve point is out-of-fold too.
         fold_graphs = [tie_graph(data["target_power"][selection]) for selection, _ in folds]
-        for method in TWO_ROUND_METHODS:
+        search_methods = TWO_ROUND_METHODS + (("stacked",) if "stacked" in rankings else ())
+        for method in search_methods:
             policy = two_round(rankings[method])
             for setting in TWO_ROUND_GRID:
                 picked = np.empty(samples, dtype=int)
@@ -513,7 +516,7 @@ def main() -> None:
                         sizes, sizes * BEAM_MEASUREMENT_MS)
             return policy
 
-        for method in TWO_ROUND_METHODS:
+        for method in search_methods:
             policy = burst(rankings[method])
             for setting in BURST_GRID:
                 picked = np.empty(samples, dtype=int)

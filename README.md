@@ -17,12 +17,34 @@ The project has two halves:
 Read [AUDIT.md](AUDIT.md) first. It explains what was wrong in the first
 draft and why several experiments were redesigned.
 
+## Key results at a glance
+
+All beam results are on real 60 GHz measurements (DeepSense 6G Scenario 23,
+33–35 flights), scored on held-out flights (GroupKFold over sequences) with
+every setting chosen on training flights only.
+
+| Task | Best scheme | Exact top-1 | Macro-F1 (all 56 classes) | Latency per decision |
+|---|---|---|---|---|
+| Closed-loop tracking (deployed) | Camera + GPS top-6 candidates + tie-graph tracker | **99.46%** | **0.972** | **0.66 ms** (full sweep 5 ms) |
+| Closed-loop tracking | Camera + GPS top-4 + 6 tie partners | **99.57%** | 0.963 (≥ 5 samples: 0.992) | 0.67 ms |
+| Reduced beam training, t+1 (open loop) | Stacked blind predictor, one round | 99.3% | 0.961 | 0.50 ms |
+| Reduced beam training, t+3 (open loop) | Stacked (all sensing) + tie graph | 99.4% | 0.935 | 2.09 ms |
+| Blind prediction, t+1 (no beam measured) | Nested stack, all sensing | 75.6% (noise bound 79%) | 0.50 | – |
+| Blind prediction, t+3 | Nested stack, all sensing | 64.3% | 0.34 | – |
+
+Blind exact top-1 cannot reach 95% on this data: in 75% of sweeps the two
+best beams are within the 0.25 dB measurement noise, so even a non-causal
+oracle gets 79%. On the 25% of decisive labels the stack predicts the exact
+beam 96.0% of the time at t+1. Within noise it reaches 97.2% (t+1) and
+89.6% (t+3). The remaining limits are listed in the paper (Sec. VII): rare
+beams (7 classes with < 5 samples) and simulated physical-layer hardware.
+
 ## Setup
 
 ```powershell
 cd Hardware_Aware_RIS_UAV
 python -m pip install -r requirements.txt
-python -m pytest tests          # 24 regression tests, about 10 s
+python -m pytest tests          # 28 regression tests, about 10 s
 ```
 
 ## Experiments
@@ -38,6 +60,7 @@ python -m pytest tests          # 24 regression tests, about 10 s
 | `closed_loop_beam_tracking.py` | Replays every flight with policies that know only the beams they measured (window + learned tie partners, periodic or loss-triggered full sweeps); exact top-1, latency, effective spectral efficiency | `closed_loop_beam_tracking.{json,csv}`, `*_flights.csv` | ~1 min |
 | `camera_beam_prediction.py` | Encodes every BS camera frame with a frozen ImageNet ResNet-18 (`--extract`, cached locally), then predicts the beam from the camera alone. `SCENARIO23_FEATURES=camera` / `gps+camera` feeds a 16-d PCA of it to the two prediction scripts | `camera_beam_prediction.json` | ~25 min extract (CPU), ~2 min study |
 | `closed_loop_side_tracking.py` | Closed loop with camera (UAV pixel) and GPS candidates per step and loss-triggered sweeps; per-flight tests against the tie-graph tracker | `closed_loop_side_tracking.{json,csv}`, `*_flights.csv` | ~10 min |
+| `blind_stacking.py` | Nested stack of all blind predictors (GRU runs, trees, shifted template); per-flight tests; saves stacked scores to `results/stacked_{power,all}/` for `beam_training_overhead.py` | `blind_stacking.{json,csv}` | ~25 min (CPU) |
 | `blind_prediction_analysis.py` | Splits blind exact top-1 into decisive samples (best beam leads by > 0.25 dB, 25%) and near-ties (75%); fused GRU + last-sweep predictor, nested over flights | `blind_prediction_analysis.json` | ~1 min |
 | `significance_tests.py` | Paired per-flight tests (flight bootstrap CI, Wilcoxon, Holm) for closed-loop policies and for each side-information run | `significance_tests.{json,csv}` | ~10 s |
 | `tracking_eval.py` | Position predictors (persistence, CV, Kalman, learned) scored by delivered array gain at 10/100/500 ms horizons | `tracking_metrics.{json,csv}` | ~1 min |
@@ -74,6 +97,28 @@ the label is decisive, the GRU ensemble predicts the exact beam **94.1%**
 of the time at t+1 (95% CI 91.7-95.9) and 78.7% at t+3
 (`blind_prediction_analysis.py`, paper Table VII). Fusing it with the last
 sweep adds +0.3 / +0.6 points of exact top-1 (72.4% / 57.3%).
+
+**Stacked blind predictor** (`blind_stacking.py`, paper Table VII, Fig. 5).
+A nested stack of the GRU variants of every side-information run, extra
+trees and LightGBM on long-history features, the last sweep and a
+shifted-template tracker (sub-beam peak position, aligned average of the
+last sweeps, shifted by the predicted peak motion). Weights and template
+settings are chosen on the training folds only.
+
+| Horizon | Model | Within noise | Exact top-1 [95% CI] | Macro-F1 | Exact, decisive labels |
+|---|---|---|---|---|---|
+| t+1 | GRU ensemble (power only) | 96.4% | 72.1% [68.8, 74.9] | 0.485 | 94.1% |
+| t+1 | Stacked, power only | 97.0% | 74.6% [71.0, 77.6] | 0.493 | 95.6% |
+| t+1 | **Stacked, all sensing** | **97.2%** | **75.6% [72.4, 78.4]** | **0.495** | **96.0%** |
+| t+3 | GRU ensemble (power only) | 86.0% | 56.7% [50.9, 61.7] | 0.283 | 78.7% |
+| t+3 | Stacked, power only | 87.1% | 60.9% [55.7, 65.8] | 0.322 | 82.8% |
+| t+3 | **Stacked, all sensing** | **89.6%** | **64.3% [59.5, 68.8]** | **0.343** | **86.3%** |
+
+Per flight (30 flights), the all-sensing stack beats the GRU ensemble by
++3.6 points at t+1 (24 better, 4 worse) and +7.6 at t+3 (23 better, 6
+worse), Holm p <= 0.0014. Used as the shortlist for reduced beam training
+it matches the two-round GRU scheme at t+1 with fewer beams in one round
+(99.3%, macro-F1 0.961, 6.4 beams, 0.50 ms).
 
 "Within noise" means the chosen beam is within 0.25 dB of the best beam.
 That is the testbed's own noise floor: the same beam's power changes by a
@@ -171,21 +216,24 @@ frame). Blind prediction, within noise / balanced within noise, %:
 
 | Horizon | Model | Power only | + GPS | + camera emb. | + UAV pixel | + GPS + UAV pixel |
 |---|---|---|---|---|---|---|
-| t+1 | GRU ensemble | 96.4 / 91.7 | 96.5 / 91.6 | 95.9 / 89.6 | 96.5 / 91.4 | **96.6 / 91.4** |
-| t+3 | RF + sweep prior | 78.5 / 63.0 | **82.7 / 65.3** | 75.9 / 61.0 | 78.1 / 62.8 | 81.4 / 65.3 |
-| t+3 | GRU, soft target | 81.1 / 65.8 | **83.2 / 69.7** | 74.8 / 59.0 | 79.0 / 64.1 | 82.8 / 67.9 |
-| t+3 | GRU ensemble | 86.0 / 75.5 | 87.2 / 79.3 | 80.5 / 67.3 | 84.5 / 73.9 | **87.3 / 77.4** |
+| t+1 | GRU ensemble | 96.4 / 91.7 | **96.5 / 91.9** | 95.9 / 89.6 | 96.4 / 90.8 | 96.5 / 92.1 |
+| t+3 | RF + sweep prior | 78.5 / 63.0 | **82.7 / 65.3** | 75.9 / 61.0 | 78.4 / 63.1 | 81.5 / 64.9 |
+| t+3 | GRU, soft target | 81.1 / 65.8 | 83.5 / 70.0 | 74.8 / 59.0 | 78.7 / 62.4 | **84.1 / 69.8** |
+| t+3 | GRU ensemble | 86.0 / 75.5 | **87.4 / 78.4** | 80.5 / 67.3 | 84.6 / 74.8 | 87.3 / 78.5 |
 
-No side information significantly improves blind prediction per flight
-(GPS at t+3: +1.1 points, Wilcoxon p = 0.34, Holm 0.68). The camera
-embedding hurts (-5.6 points at t+3, worse on 23 of 33 flights). Alone, the
-UAV pixel finds the current beam within noise 81% of the time (embedding
-67%, most frequent beam 15%). With GPS, reduced beam training at t+3
-reaches 99.3% exact top-1 and all-class macro-F1 0.946 (power only 0.929)
-with 14.5 instead of 11.7 beams; CIs overlap. The other tables stay
+In a single model no side information significantly improves blind
+prediction per flight (GPS at t+3: +1.3 points, Holm p = 0.64); only the
+stack above makes it count. The camera embedding hurts (-5.6 points at
+t+3, worse on 23 of 30 flights). Alone, the UAV pixel finds the current
+beam within noise 80% of the time (embedding 67%, most frequent beam 15%).
+With GPS, reduced beam training at t+3 reaches 99.2% exact top-1 and
+all-class macro-F1 0.931 (power only 99.1% / 0.929) with 15.5 instead of
+11.7 beams; fused with the last sweep 99.4% / 0.955. The other tables stay
 power-only (reproducible from the shipped CSV): `SCENARIO23_FEATURES=power`
-ignores `unit2/`. The `unit2_height` channel (31-391) doesn't match the
-<= 120 m BS distance, so it is used but not interpreted.
+ignores `unit2/`. `unit2_altitude` and `unit2_height` are in **feet**
+(altitude - height is a constant 1175.8 ft, the ground elevation at the
+BS); they are converted to metres, giving a 9.6-119 m flight height and
+46-90 deg elevation.
 
 **Sensing-aided closed loop** (`closed_loop_side_tracking.py`, paper
 Table XIV, Fig. 9). Each step adds the top-k beams of a random forest fed
@@ -195,20 +243,32 @@ the previous step's UAV pixel and/or GPS; full sweeps only on beam loss.
 |---|---|---|---|---|
 | Full sweep every step | 64.0 | 5.00 ms | 100% | 96.5 |
 | Tracker, 4 tie partners, full every 8 | 13.2 | 1.05 ms | 97.2% | 99.1 |
-| Camera top-4 + tracker, loss-triggered | 7.4 | 0.59 ms | 98.6% | 99.5 |
+| Camera top-4 + tracker, loss-triggered | 7.4 | 0.59 ms | 98.4% | 99.5 |
 | GPS top-4 + tracker, loss-triggered | 7.3 | 0.59 ms | 99.1% | 99.6 |
-| **Camera + GPS top-4 + tracker, loss-triggered** | **7.0** | **0.56 ms** | **99.2%** | **99.6** |
+| Camera + GPS top-4 + tracker, loss-triggered | 7.0 | 0.56 ms | 99.2% | 99.6 |
+| **Camera + GPS top-6 + tracker, loss-triggered** | 8.2 | 0.66 ms | **99.5%** | 99.5 |
+| **Camera + GPS top-4 + 6 tie partners, loss-triggered** | 8.4 | 0.67 ms | **99.6%** | 99.5 |
 
-Camera + GPS beats the tracker on 25 flights and loses on 1 (+2.0 points,
-95% CI +1.3 to +2.9), with lower latency on 30 of 33.
+Camera + GPS top-4 beats the tracker on 25 flights and loses on 1 (+2.1
+points, 95% CI +1.3 to +3.0), with lower latency on 30 of 33.
 Closed-loop macro-F1 (all classes / classes with >= 5 steps): tracker
-0.843 / 0.934, camera + GPS top-4 0.944 / 0.980, so the sensing-aided
-tracker meets 95% on exact top-1 and macro-F1 (>= 5) at 0.56 ms.
+0.843 / 0.934, camera + GPS top-4 0.951 / 0.984, top-6 **0.972** / 0.988,
+top-4 + 6 partners 0.963 / **0.992** (27 flights better, none worse). So
+the sensing-aided tracker meets 95% on exact top-1 and on macro-F1 over
+all 56 classes at 0.66 ms.
+
+Stale GPS: with the GPS fix 2 / 4 / 8 steps old (0.28 / 0.57 / 1.1 s),
+GPS top-4 gives 99.16 / 98.69 / 98.10% and camera + GPS 99.17 / 98.97 /
+98.84%, all above the tracker (Holm p < 0.001). Timing sensitivity
+(39-156 us per beam, 0.5-2 ms round trip): camera + GPS needs 0.28-1.13 ms,
+the tracker 0.52-2.09 ms, full sweeps 2.5-10 ms; the policy ordering by
+effective SE never changes.
 
 Locator check against GPS (`--validate`, no labels): pixel -> east/north
-on held-out flights gives R^2 0.67 / 0.12, median 4.4 m (height is not
-recorded consistently, so a pixel fixes direction, not distance); about
-1% of frames are misdetected (pixel jumps > 100 px in 1.8% of frame pairs).
+on held-out flights gives R^2 0.67 / 0.12, median 4.5 m (a pixel fixes
+direction, not distance). A causal gate holds a detection that jumps more
+than 100 px until two frames agree: jumps > 100 px fall from 1.8% to
+0.95% of frame pairs (1.4% of frames held).
 
 **140 GHz RIS size vs receiver noise figure** (`run_physical_layer.py`,
 paper Table III): full availability needs 24 cm at NF 6 dB, 28 cm at

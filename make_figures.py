@@ -379,6 +379,47 @@ def side_information_comparison() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def figure_blind_stacking() -> None:
+    """Blind exact top-1 per model, all samples and decisive labels, against the noise bound."""
+
+    path = RESULTS / "blind_stacking.json"
+    if not path.exists():
+        return
+    report = json.loads(path.read_text())
+    models = [("Persistence", "Persistence"), ("GRU ensemble (power only)", "GRU ensemble"),
+              ("Stacked, power only", "Stacked, power only"), ("Stacked, all sensing", "Stacked, all sensing")]
+    bound = 100 * json.loads((RESULTS / "power_only" / "beam_training_overhead.json").read_text())[
+        "noncausal_oracle_ceiling"]["exact_top1"]
+    figure, axes = plt.subplots(1, 2, figsize=(COLUMN_WIDTH_IN * 2, 1.9), sharey=True)
+    y = np.arange(len(models))[::-1]
+    for axis, horizon in zip(axes, ("t+1", "t+3")):
+        rows = report["horizons"][horizon]
+        exact = [100 * rows[key]["top1_acc"] for key, _ in models]
+        decisive = [rows[key]["exact_top1_decisive_pct"] for key, _ in models]
+        low = [rows[key]["exact_top1_ci95"][0] for key, _ in models]
+        high = [rows[key]["exact_top1_ci95"][1] for key, _ in models]
+        axis.hlines(y, low, high, color=BLUE, linewidth=1.2, alpha=0.5, zorder=2)
+        axis.scatter(exact, y, color=BLUE, marker="o", s=24, zorder=3, label="Exact top-1, all samples",
+                     edgecolors="white", linewidths=0.4)
+        axis.scatter(decisive, y, color=ORANGE, marker="s", s=22, zorder=3,
+                     label="Exact top-1, decisive labels (25%)", edgecolors="white", linewidths=0.4)
+        for value, row in zip(exact, y):
+            axis.text(value, row + 0.22, f"{value:.1f}", ha="center", fontsize=6.5, color=INK)
+        axis.axvline(bound, color=INK_MUTED, linewidth=0.8, linestyle="--", zorder=1)
+        axis.text(bound, len(models) - 0.45, " noise bound", fontsize=6.5, color=INK_MUTED, va="bottom")
+        axis.set_title(horizon, fontsize=8, color=INK)
+        axis.set_xlim(45, 100)
+        axis.set_xlabel("Blind exact top-1 (%)")
+        axis.grid(axis="y", visible=False)
+    axes[0].set_yticks(y)
+    axes[0].set_yticklabels([name for _, name in models])
+    axes[0].set_ylim(-0.6, len(models) - 0.1)
+    handles, labels = axes[0].get_legend_handles_labels()
+    figure.legend(handles, labels, loc="upper center", ncol=2, fontsize=7, bbox_to_anchor=(0.5, 1.08))
+    figure.tight_layout()
+    save(figure, "fig_blind_stacking.png")
+
+
 def figure_side_information() -> None:
     """Within-noise accuracy per model and horizon, for every set of side information."""
 
@@ -502,6 +543,7 @@ def figure_side_tracking() -> None:
 
 def main() -> None:
     figure_system()
+    figure_blind_stacking()
     figure_beam_training()
     figure_conformal()
     figure_closed_loop()
