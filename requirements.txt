@@ -7,3 +7,8 @@ pytest>=8.0
 torch>=2.2  # CPU build is enough: pip install torch --index-url https://download.pytorch.org/whl/cpu
 python-docx>=1.1  # only for paper/build_docx.py
 pillow>=10.0
+matplotlib>=3.8  # make_figures.py
+pymupdf>=1.24  # optional: render the Word/PDF pages for checking
+# Optional, camera_beam_prediction.py --extract only (frozen ResNet-18). With torch 2.15 use
+#   pip install --no-deps torchvision==0.29.2
+torchvision>=0.17

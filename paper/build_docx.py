@@ -2,7 +2,7 @@
 
 Layout follows the IEEE conference template: US Letter, Times New Roman,
 single-column title block, two-column body, table captions above tables,
-figure captions below figures. Wide tables and Fig. 4 span both columns.
+figure captions below figures. Wide tables and wide figures span both columns.
 [VERIFY] items are highlighted so they are not missed before submission.
 
     python paper/build_docx.py   ->   paper/revised_paper_ieee.docx
