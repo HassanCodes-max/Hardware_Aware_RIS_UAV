@@ -108,6 +108,7 @@ def figure_tracking() -> None:
     summary = pd.DataFrame(json.loads((RESULTS / "tracking_metrics.json").read_text())["summary"])
     series = [
         ("kalman_cv", "Kalman CV", BLUE, "o"),
+        ("learned_ridge", "Learned ridge", AQUA, "D"),
         ("constant_velocity", "Constant velocity", ORANGE, "s"),
         ("persistence", "Persistence", GREY, "^"),
     ]
@@ -157,29 +158,107 @@ def figure_impairments() -> None:
 
 
 def figure_ris_sizing() -> None:
-    """Link availability vs RIS size, ideal vs realistic hardware."""
+    """Availability vs RIS size: 60 GHz ideal vs realistic (left), 140 GHz vs receiver NF (right)."""
 
-    sizing = json.loads((RESULTS / "physical_layer_metrics.json").read_text())["ris_sizing_availability"]
+    metrics = json.loads((RESULTS / "physical_layer_metrics.json").read_text())
+    sizing = metrics["ris_sizing_availability"]
     sizes = list(sizing)
     x = np.arange(len(sizes))
 
-    figure, axis = plt.subplots(figsize=(COLUMN_WIDTH_IN, 2.1))
+    figure, (left, right) = plt.subplots(1, 2, figsize=(COLUMN_WIDTH_IN * 2, 2.3),
+                                         gridspec_kw={"width_ratios": [1.1, 1]})
     width = 0.36
     for offset, key, name, color in (
         (-width / 2, "ideal_availability_pct", "Ideal hardware", GREY),
         (width / 2, "hardware_aware_availability_pct", "Realistic hardware, aware control", BLUE),
     ):
         values = [sizing[s][key] for s in sizes]
-        bars = axis.bar(x + offset, values, width=width - 0.03, color=color, label=name)
+        bars = left.bar(x + offset, values, width=width - 0.03, color=color, label=name)
         for bar, value in zip(bars, values):
-            axis.text(bar.get_x() + bar.get_width() / 2, value + 1.5, f"{value:.0f}",
+            left.text(bar.get_x() + bar.get_width() / 2, value + 1.5, f"{value:.0f}",
                       ha="center", color=INK, fontsize=6.5)
-    axis.set_xticks(x, [f"{s}\n({sizing[s]['aperture_cm']:.0f} cm)" for s in sizes])
-    axis.set_ylabel("Availability, SNDR >= 0 dB (%)")
-    axis.set_ylim(0, 110)
-    axis.grid(axis="x", visible=False)
-    axis.legend(loc="lower center", bbox_to_anchor=(0.5, 1.0), ncol=2, fontsize=7)
+    left.set_xticks(x, [f"{s}\n({sizing[s]['aperture_cm']:.0f} cm)" for s in sizes])
+    left.set_ylabel("Availability, SNDR >= 0 dB (%)")
+    left.set_ylim(0, 140); left.set_yticks([0, 20, 40, 60, 80, 100])
+    left.set_title("60 GHz", fontsize=8, color=INK)
+    left.grid(axis="x", visible=False)
+    left.legend(loc="upper left", fontsize=6.5)
+
+    # 140 GHz with D-band hardware: realistic availability per receiver noise figure.
+    nf10 = dict(metrics["ris_sizing_140ghz_dband_hardware"])
+    nf10.update(metrics["ris_sizing_140ghz_nf_sensitivity"]["nf_10db"])
+    curves = [("NF 10 dB (default)", nf10, BLUE, "o"),
+              ("NF 7 dB", metrics["ris_sizing_140ghz_nf_sensitivity"]["nf_7db"], ORANGE, "s"),
+              ("NF 6 dB", metrics["ris_sizing_140ghz_nf_sensitivity"]["nf_6db"], AQUA, "^")]
+    for name, table, color, marker in curves:
+        rows = sorted(table.values(), key=lambda r: r["aperture_cm"])
+        right.plot([r["aperture_cm"] for r in rows], [r["hardware_aware_availability_pct"] for r in rows],
+                   color=color, marker=marker, markersize=4, linewidth=1.5, label=name)
+    ideal = sorted(nf10.values(), key=lambda r: r["aperture_cm"])
+    right.plot([r["aperture_cm"] for r in ideal], [r["ideal_availability_pct"] for r in ideal],
+               color=GREY, linestyle="--", linewidth=1.2, label="Ideal hardware, NF 10 dB")
+    right.set_xlabel("RIS aperture (cm), 140 GHz")
+    right.set_ylabel("Availability, realistic RIS (%)")
+    right.set_ylim(0, 105)
+    right.set_xticks([8, 16, 20, 24, 28, 32])
+    right.set_title("140 GHz, D-band transceiver", fontsize=8, color=INK)
+    right.legend(loc="lower right", fontsize=6.5)
+    figure.tight_layout()
     save(figure, "fig_ris_sizing.png")
+
+
+def figure_system() -> None:
+    """Block diagram: hardware-aware link (top) and the sensing-aided beam-management loop (bottom)."""
+
+    from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
+
+    figure, axis = plt.subplots(figsize=(COLUMN_WIDTH_IN * 2, 2.9))
+    axis.set_xlim(0, 100)
+    axis.set_ylim(0, 60)
+    axis.axis("off")
+
+    def box(x, y, w, h, title, body, edge=INK_MUTED, fill="#f4f3ef"):
+        axis.add_patch(FancyBboxPatch((x, y), w, h, boxstyle="round,pad=0.4,rounding_size=1.2",
+                                      linewidth=0.9, edgecolor=edge, facecolor=fill))
+        axis.text(x + w / 2, y + h - 2.2, title, ha="center", va="top", fontsize=7.2, color=INK,
+                  fontweight="bold")
+        axis.text(x + w / 2, y + h - 6.4, body, ha="center", va="top", fontsize=6.2, color=INK_MUTED,
+                  linespacing=1.25)
+
+    def arrow(x0, y0, x1, y1, text=None, dx=0.0, dy=1.4, style="-|>", color=INK_MUTED):
+        axis.add_patch(FancyArrowPatch((x0, y0), (x1, y1), arrowstyle=style, mutation_scale=8,
+                                       linewidth=0.9, color=color))
+        if text:
+            axis.text((x0 + x1) / 2 + dx, (y0 + y1) / 2 + dy, text, ha="center", va="bottom",
+                      fontsize=6, color=INK_MUTED)
+
+    # Row 1: the physical link (Secs. II-IV).
+    axis.text(1, 58.5, "Hardware-aware link (simulated, Secs. II–IV)", fontsize=7.4, color=BLUE,
+              fontweight="bold", va="top")
+    box(1, 34, 20, 19, "Base station", "PA (Saleh, Bussgang)\n64-beam codebook\nS11 mismatch")
+    box(33, 34, 23, 19, "RIS", "2-bit phases, phase noise\namplitude–phase coupling\ncoupling-aware control")
+    box(65, 34, 16, 19, "UAV", "300 m flight\n60 / 140 GHz")
+    box(86, 34, 13, 19, "Channel", "LS / LMMSE /\nparametric\nestimation")
+    arrow(21.8, 43.5, 32.2, 43.5, "gases,\nITU-R P.676", dy=1.0)
+    arrow(56.6, 43.5, 64.4, 43.5)
+    arrow(81.6, 43.5, 85.4, 43.5)
+
+    # Row 2: beam management on real measurements (Secs. V-VI).
+    axis.text(1, 28.5, "Beam management on DeepSense Scenario 23 (measured, Secs. V–VI)", fontsize=7.4,
+              color=ORANGE, fontweight="bold", va="top")
+    box(1, 2, 19, 21, "Sensing (t − 1)", "BS camera: UAV pixel\n(label-free locator)\nUAV GPS")
+    box(25, 2, 23, 21, "Candidate beams", "current beam ± 1\ntie-graph partners\ntop-k of camera/GPS RF")
+    box(53, 2, 20, 21, "Measure", "K SSB beams\n78 µs each\n(5G NR FR2)")
+    box(78, 2, 21, 21, "Decide", "keep strongest beam\nloss > 3 dB:\nfull 64-beam sweep")
+    arrow(20.6, 12.5, 24.4, 12.5)
+    arrow(48.6, 12.5, 52.4, 12.5)
+    arrow(73.6, 12.5, 77.4, 12.5)
+    axis.add_patch(FancyArrowPatch((88.5, 1.2), (36.5, 1.2), connectionstyle="arc3,rad=-0.12",
+                                   arrowstyle="-|>", mutation_scale=8, linewidth=0.9, color=INK_MUTED))
+    axis.text(62, -4.6, "next step: chosen beam becomes the current beam", ha="center", va="top",
+              fontsize=6, color=INK_MUTED)
+    axis.set_ylim(-8, 60)
+    save(figure, "fig_system.png")
 
 
 def figure_conformal() -> None:
@@ -422,6 +501,7 @@ def figure_side_tracking() -> None:
 
 
 def main() -> None:
+    figure_system()
     figure_beam_training()
     figure_conformal()
     figure_closed_loop()
