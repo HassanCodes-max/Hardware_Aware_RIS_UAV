@@ -36,6 +36,8 @@ python -m pytest tests          # 14 regression tests, a few seconds
 | `conformal_beam_training.py` | Conformal beam shortlists calibrated on held-out flights to a target exact top-1 (90–99%); rank and APS scores (run after `beam_sequence_model.py`) | `conformal_beam_training.{json,csv}` | ~1 min |
 | `closed_loop_learned_tracking.py` | Ten deep models trained on measured-only logs, run in the loop, against the tie graph at equal budget; CPU inference latency fp32/int8 | `closed_loop_learned_tracking.{json,csv}` | ~40 min (CPU) |
 | `closed_loop_beam_tracking.py` | Replays every flight with policies that know only the beams they measured (window + learned tie partners, periodic or loss-triggered full sweeps); exact top-1, latency, effective spectral efficiency | `closed_loop_beam_tracking.{json,csv}`, `*_flights.csv` | ~1 min |
+| `camera_beam_prediction.py` | Encodes every BS camera frame with a frozen ImageNet ResNet-18 (`--extract`, cached locally), then predicts the beam from the camera alone. `SCENARIO23_FEATURES=camera` / `gps+camera` feeds a 16-d PCA of it to the two prediction scripts | `camera_beam_prediction.json` | ~25 min extract (CPU), ~2 min study |
+| `significance_tests.py` | Paired per-flight tests (flight bootstrap CI, Wilcoxon, Holm) for closed-loop policies and for each side-information run | `significance_tests.{json,csv}` | ~10 s |
 | `tracking_eval.py` | Position predictors (persistence, CV, Kalman, learned) scored by delivered array gain at 10/100/500 ms horizons | `tracking_metrics.{json,csv}` | ~1 min |
 | `main.py` | Per-time-step trace along the default flight | `simulation.csv` | ~4 s |
 | `phase_tracking.py`, `dataset_generator.py`, `hybrid_dataset_generator.py` | Synthetic phase datasets | `*.csv` | minutes |
@@ -157,13 +159,29 @@ velocity, height, pitch and roll. Within noise / balanced within noise, %:
 
 | Horizon | Model | Power only | Power + GPS |
 |---|---|---|---|
-| t+1 | GRU ensemble | 96.4 / 91.7 | 96.5 / 91.6 |
-| t+3 | RF + sweep prior | 78.5 / 63.0 | **82.7 / 65.3** |
-| t+3 | GRU, soft target | 81.1 / 65.8 | **83.2 / 69.7** |
-| t+3 | GRU ensemble | 86.0 / 75.5 | **87.2 / 79.3** |
+| Horizon | Model | Power only | + GPS | + camera | + GPS + camera |
+|---|---|---|---|---|---|
+| t+1 | GRU ensemble | 96.4 / 91.7 | **96.5 / 91.6** | 95.9 / 89.6 | 96.0 / 90.4 |
+| t+3 | RF + sweep prior | 78.5 / 63.0 | **82.7 / 65.3** | 75.9 / 61.0 | 81.3 / 63.9 |
+| t+3 | GRU, soft target | 81.1 / 65.8 | **83.2 / 69.7** | 74.8 / 59.0 | 78.1 / 64.6 |
+| t+3 | GRU ensemble | 86.0 / 75.5 | **87.2 / 79.3** | 80.5 / 67.3 | 85.0 / 75.7 |
 
 Position helps only further ahead (t+3); at t+1 the last sweep already
-encodes it. The other tables stay power-only (reproducible from the
+encodes it. Per flight the GRU-ensemble gain is not significant (+1.1
+points, 95% CI -0.1 to +2.4, Holm p = 0.34). Camera features (frozen
+ResNet-18, 108 ms/frame on one CPU thread) hurt every model: -5.6 points
+at t+3 for the GRU ensemble (worse on 23 of 33 flights). Alone, the camera
+finds the current beam within noise 67% of the time (most frequent beam:
+15%), so it carries position information, but generic scene features
+overfit 35 flights; a UAV detector would be needed. With GPS, reduced
+beam training at t+3 reaches 99.3% exact top-1 and all-class macro-F1
+0.946 (power only 0.929) with 14.5 instead of 11.7 beams; CIs overlap.
+
+**Significance** (`significance_tests.py`, paper Table XIII). Over 33
+flights: the 4-partner tracker loses 2.8 points of exact top-1 vs a full
+sweep every step but gains 2.6 points of spectral efficiency on 32 of 33
+flights; 6 partners beat 4 by 2.0 points (26 better, 0 worse); 8 add
+nothing significant over 6. The other tables stay power-only (reproducible from the
 shipped CSV): run with `SCENARIO23_FEATURES=power` to ignore `unit2/`.
 The `unit2_height` channel (31–391) doesn't match the ≤ 120 m BS distance,
 so it is used but not interpreted.
@@ -353,6 +371,19 @@ GPS alone can't steer a 32×32 RIS: 5 m of error is wider than the beam.
 - `adaptive_pilot_plan` / `estimate_from_prior`: the pilot budget comes
   from the prior's angular uncertainty and the predicted SNR. The margin
   (128) was chosen on separate seeds from the reported runs.
+
+### 2026-10-30: Major update 13 (camera, GPS-aided beam training, significance)
+
+- Camera: frozen ResNet-18 embeddings; camera only and as side information
+  (paper Tables XI-XII, Fig. 7). Negative result: camera features lower
+  blind accuracy significantly.
+- Beam training and conformal studies rerun on the GPS-aided GRU ensemble
+  (`results/gps/`): small changes, within CIs.
+- Per-flight significance tests (paper Table XIII, Fig. 8). The GPS gain
+  at t+3 is not significant per flight.
+- Fixes: Table IX covers 33 flights (flights 22 and 30 hold one sweep);
+  GRU-ensemble t+1 macro-F1 is 0.48, not 0.49; Table XI balanced 89.3,
+  not 89.2 (Table XI is now generated from fold means).
 
 ### 2026-10-30: Major update 12 (full Scenario 23: GPS and kinematics)
 
