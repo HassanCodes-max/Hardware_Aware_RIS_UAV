@@ -37,8 +37,9 @@ from sklearn.model_selection import GroupKFold
 from beam_prediction import BEAMS, DATA_DIR, FOLDS, RESULTS_DIR, SEED, load_scenario23
 from beam_training_overhead import tie_graph
 from camera_beam_prediction import uav_pixel_features
-from closed_loop_beam_tracking import (GENIE, NOMINAL_SNR_DB, Policy, flight_record, run_flight,
-                                       summarise_flights)
+from beam_training_overhead import BEAM_MEASUREMENT_MS, REPORT_ROUND_TRIP_MS
+from closed_loop_beam_tracking import (GENIE, NOMINAL_SNR_DB, Policy, effective_se, flight_record,
+                                       run_flight, summarise_flights)
 from public_data_adapter import load_scenario23_kinematics
 from significance_tests import holm, paired_test
 
@@ -59,6 +60,20 @@ SIDE_POLICIES = {
         Policy("camera + GPS top-4 + tracker, loss-triggered only", None, window=1, partners=4, side=4),
     ],
 }
+# Stale GPS: the UAV's report arrives d steps late (~142 ms per step); the camera,
+# local to the BS, stays one frame old.
+GPS_LAGS = (2, 4, 8)
+for lag in GPS_LAGS:
+    SIDE_POLICIES[f"GPS lag {lag}"] = [Policy(f"GPS top-4 + tracker, loss-triggered only, GPS {lag} steps old",
+                                              None, window=1, partners=4, side=4)]
+    SIDE_POLICIES[f"camera + GPS lag {lag}"] = [Policy(
+        f"camera + GPS top-4 + tracker, loss-triggered only, GPS {lag} steps old",
+        None, window=1, partners=4, side=4)]
+LATENCY_POLICIES = ("tracker: window +/-1 + 4 tie partners, full every 8",
+                    "camera + GPS top-4 + tracker, loss-triggered only", "full sweep every step")
+BEAM_TIMES_MS = (BEAM_MEASUREMENT_MS / 2, BEAM_MEASUREMENT_MS, 2 * BEAM_MEASUREMENT_MS)
+ROUND_TRIPS_MS = (0.5, REPORT_ROUND_TRIP_MS, 2.0)
+
 REFERENCE_POLICIES = [
     TRACKER,
     Policy("tracker, loss-triggered only", None, window=1, partners=4),
@@ -66,17 +81,25 @@ REFERENCE_POLICIES = [
 ]
 
 
-def side_rankings(features: np.ndarray, labels: np.ndarray, sequences: np.ndarray,
-                  previous: np.ndarray, train: np.ndarray) -> np.ndarray:
-    """(N, 64) beam ranking for every sample from the previous sample's side features."""
+def lagged(previous: np.ndarray, steps: int) -> np.ndarray:
+    """Index of the sample `steps` earlier in the same flight, -1 if none."""
 
-    usable = previous >= 0
+    index = np.arange(len(previous))
+    for _ in range(steps):
+        index = np.where(index >= 0, previous[np.maximum(index, 0)], -1)
+    return index
+
+
+def side_rankings(features: np.ndarray, usable: np.ndarray, labels: np.ndarray,
+                  train: np.ndarray) -> np.ndarray:
+    """(N, 64) beam ranking per decision; features[i] is what is known when deciding sample i."""
+
     fit = train[usable[train]]
     model = RandomForestClassifier(n_estimators=300, min_samples_leaf=2, n_jobs=-1, random_state=SEED)
-    model.fit(features[previous[fit]], labels[fit])
+    model.fit(features[fit], labels[fit])
     scores = np.zeros((len(labels), BEAMS))
     rows = np.flatnonzero(usable)
-    scores[np.ix_(rows, model.classes_)] = model.predict_proba(features[previous[rows]])
+    scores[np.ix_(rows, model.classes_)] = model.predict_proba(features[rows])
     return np.argsort(-scores, axis=1)
 
 
@@ -85,7 +108,6 @@ def main() -> None:
     manifest = pd.read_csv(DATA_DIR / "scenario23.csv")
     gps = load_scenario23_kinematics(DATA_DIR, manifest).to_numpy(float)
     camera = uav_pixel_features()
-    side_features = {"camera": camera, "GPS": gps, "camera + GPS": np.hstack([camera, gps])}
 
     # Index of the previous sample of the same flight (time order), -1 for a flight's first sample.
     previous = np.full(len(labels), -1)
@@ -94,12 +116,22 @@ def main() -> None:
         index = index[np.argsort(time_s[index], kind="stable")]
         previous[index[1:]] = index[:-1]
 
+    # What each decision knows: the camera frame one step old, the GPS `lag` steps old.
+    one = lagged(previous, 1)
+    side_features = {"camera": (camera[one], one >= 0), "GPS": (gps[one], one >= 0),
+                     "camera + GPS": (np.hstack([camera[one], gps[one]]), one >= 0)}
+    for lag in GPS_LAGS:
+        old = lagged(previous, lag)
+        side_features[f"GPS lag {lag}"] = (gps[old], old >= 0)
+        side_features[f"camera + GPS lag {lag}"] = (np.hstack([camera[one], gps[old]]), old >= 0)
+    kept_traces = defaultdict(list)   # policy -> [(power, time, trace)] for the latency sensitivity
+
     flight_rows = []
     decisions = defaultdict(lambda: ([], []))   # policy -> (best beams, chosen beams), all steps
     for train, test in GroupKFold(n_splits=FOLDS).split(power, groups=sequences):
         graph = tie_graph(power[train])
-        rankings = {name: side_rankings(f, labels, sequences, previous, train)
-                    for name, f in side_features.items()}
+        rankings = {name: side_rankings(f, usable, labels, train)
+                    for name, (f, usable) in side_features.items()}
         for sequence in np.unique(sequences[test]):
             index = np.flatnonzero(sequences == sequence)
             index = index[np.argsort(time_s[index], kind="stable")]
@@ -111,9 +143,13 @@ def main() -> None:
                 flight_rows.append(flight_record(policy, int(sequence), flight_power, flight_time, trace))
                 decisions[policy.name][0].append(flight_power.argmax(axis=1))
                 decisions[policy.name][1].append(trace["chosen"])
+                if policy.name in LATENCY_POLICIES:
+                    kept_traces[policy.name].append((flight_power, flight_time, trace))
             for name, policies in SIDE_POLICIES.items():
                 for policy in policies:
                     trace = run_flight(flight_power, policy, graph, rankings[name][index])
+                    if policy.name in LATENCY_POLICIES:
+                        kept_traces[policy.name].append((flight_power, flight_time, trace))
                     decisions[policy.name][0].append(flight_power.argmax(axis=1))
                     decisions[policy.name][1].append(trace["chosen"])
                     flight_rows.append(flight_record(policy, int(sequence), flight_power, flight_time,
@@ -133,6 +169,27 @@ def main() -> None:
         summary.loc[policy, "macro_f1_support_ge5"] = f1_score(
             best, chosen, labels=np.flatnonzero(counts >= 5), average="macro", zero_division=0)
         summary.loc[policy, "classes"] = int((counts > 0).sum())
+
+    # Latency-model sensitivity: per-beam time and report round trip, recomputed from each
+    # step's beam count and its loss-triggered fallbacks (one round trip each).
+    genie_rows = flights[flights["policy"] == GENIE.name]
+    genie_se = genie_rows["se_10dB_sum"].sum() / genie_rows["intervals"].sum()
+    latency_sensitivity = []
+    for beam_ms in BEAM_TIMES_MS:
+        for round_trip_ms in ROUND_TRIPS_MS:
+            for policy in LATENCY_POLICIES:
+                latencies, se_sum, intervals = [], 0.0, 0
+                for flight_power, flight_time, trace in kept_traces[policy]:
+                    trips = np.rint((trace["latency"] - trace["beams"] * BEAM_MEASUREMENT_MS)
+                                    / REPORT_ROUND_TRIP_MS)
+                    latency = trace["beams"] * beam_ms + trips * round_trip_ms
+                    latencies.append(latency)
+                    se = effective_se(flight_power, trace["chosen"], latency, np.diff(flight_time), 10.0)
+                    se_sum, intervals = se_sum + se.sum(), intervals + len(se)
+                latency_sensitivity.append({
+                    "beam_ms": round(beam_ms, 4), "round_trip_ms": round_trip_ms, "policy": policy,
+                    "latency_ms_mean": round(float(np.mean(np.concatenate(latencies))), 4),
+                    "se_10dB_pct_of_genie": round(float(100 * se_sum / intervals / genie_se), 3)})
 
     # Per-flight tests against the tie-graph tracker.
     rng = np.random.default_rng(7)
@@ -163,6 +220,7 @@ def main() -> None:
         "nominal_snr_db": list(NOMINAL_SNR_DB),
         "summary": summary.round(5).reset_index().to_dict(orient="records"),
         "tests_vs_tracker": tests.round(6).to_dict(orient="records"),
+        "latency_sensitivity": latency_sensitivity,
     }, indent=2))
 
     pd.set_option("display.width", 250)
