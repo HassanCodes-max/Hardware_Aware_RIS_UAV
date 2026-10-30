@@ -303,8 +303,8 @@ def figure_side_information() -> None:
 
     table = side_information_comparison()
     names = [name for _, _, name in GPS_MODELS if name != "Persistence"]
-    figure, axes = plt.subplots(1, 2, figsize=(COLUMN_WIDTH_IN * 2, 2.1), sharex=True)
-    for axis, horizon in zip(axes, (1, 3)):
+    figure, axes = plt.subplots(1, 2, figsize=(COLUMN_WIDTH_IN * 2, 2.1))
+    for axis, horizon, xlim in zip(axes, (1, 3), ((92, 97.5), (73, 89))):
         rows = table[(table["horizon"] == horizon) & table["model"].isin(names)]
         y = np.arange(len(names))[::-1]
         values = rows.pivot(index="model", columns="features", values="within_noise_acc").loc[names] * 100
@@ -324,7 +324,7 @@ def figure_side_information() -> None:
         axis.set_yticklabels(names if horizon == 1 else [""] * len(names))
         axis.set_ylim(-0.6, len(names) - 0.1)
         axis.set_title(f"t+{horizon}", fontsize=8, color=INK)
-        axis.set_xlim(76, 98)
+        axis.set_xlim(*xlim)
         axis.set_xlabel("Within noise, blind prediction (%)")
         axis.grid(axis="y", visible=False)
     handles, labels = axes[0].get_legend_handles_labels()
