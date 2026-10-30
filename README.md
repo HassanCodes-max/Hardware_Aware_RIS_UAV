@@ -37,6 +37,7 @@ python -m pytest tests          # 14 regression tests, a few seconds
 | `closed_loop_learned_tracking.py` | Ten deep models trained on measured-only logs, run in the loop, against the tie graph at equal budget; CPU inference latency fp32/int8 | `closed_loop_learned_tracking.{json,csv}` | ~40 min (CPU) |
 | `closed_loop_beam_tracking.py` | Replays every flight with policies that know only the beams they measured (window + learned tie partners, periodic or loss-triggered full sweeps); exact top-1, latency, effective spectral efficiency | `closed_loop_beam_tracking.{json,csv}`, `*_flights.csv` | ~1 min |
 | `camera_beam_prediction.py` | Encodes every BS camera frame with a frozen ImageNet ResNet-18 (`--extract`, cached locally), then predicts the beam from the camera alone. `SCENARIO23_FEATURES=camera` / `gps+camera` feeds a 16-d PCA of it to the two prediction scripts | `camera_beam_prediction.json` | ~25 min extract (CPU), ~2 min study |
+| `closed_loop_side_tracking.py` | Closed loop with camera (UAV pixel) and GPS candidates per step and loss-triggered sweeps; per-flight tests against the tie-graph tracker | `closed_loop_side_tracking.{json,csv}`, `*_flights.csv` | ~10 min |
 | `significance_tests.py` | Paired per-flight tests (flight bootstrap CI, Wilcoxon, Holm) for closed-loop policies and for each side-information run | `significance_tests.{json,csv}` | ~10 s |
 | `tracking_eval.py` | Position predictors (persistence, CV, Kalman, learned) scored by delivered array gain at 10/100/500 ms horizons | `tracking_metrics.{json,csv}` | ~1 min |
 | `main.py` | Per-time-step trace along the default flight | `simulation.csv` | ~4 s |
@@ -153,38 +154,50 @@ best beam's power.
   0.86–0.90 to 0.91–0.93 with fewer beams. The GRU ensemble + tie graph
   is the cheapest t+3 setting (11.7 beams).
 
-**Position-aided prediction** (full Scenario 23 download; paper Table XI,
-Fig. 7). The models get UAV GPS (east/north from the BS, bearing), speed,
-velocity, height, pitch and roll. Within noise / balanced within noise, %:
+**Position- and vision-aided prediction** (full Scenario 23 download; paper
+Tables XI-XII, Fig. 7). Side information: UAV GPS and kinematics; a frozen
+ResNet-18 embedding of the BS camera frame; or the UAV's pixel position,
+found without labels (frame minus blurred sky, darkest 3x3 spot; 54 ms per
+frame). Blind prediction, within noise / balanced within noise, %:
 
-| Horizon | Model | Power only | Power + GPS |
-|---|---|---|---|
-| Horizon | Model | Power only | + GPS | + camera | + GPS + camera |
-|---|---|---|---|---|---|
-| t+1 | GRU ensemble | 96.4 / 91.7 | **96.5 / 91.6** | 95.9 / 89.6 | 96.0 / 90.4 |
-| t+3 | RF + sweep prior | 78.5 / 63.0 | **82.7 / 65.3** | 75.9 / 61.0 | 81.3 / 63.9 |
-| t+3 | GRU, soft target | 81.1 / 65.8 | **83.2 / 69.7** | 74.8 / 59.0 | 78.1 / 64.6 |
-| t+3 | GRU ensemble | 86.0 / 75.5 | **87.2 / 79.3** | 80.5 / 67.3 | 85.0 / 75.7 |
+| Horizon | Model | Power only | + GPS | + camera emb. | + UAV pixel | + GPS + UAV pixel |
+|---|---|---|---|---|---|---|
+| t+1 | GRU ensemble | 96.4 / 91.7 | 96.5 / 91.6 | 95.9 / 89.6 | 96.5 / 91.4 | **96.6 / 91.4** |
+| t+3 | RF + sweep prior | 78.5 / 63.0 | **82.7 / 65.3** | 75.9 / 61.0 | 78.1 / 62.8 | 81.4 / 65.3 |
+| t+3 | GRU, soft target | 81.1 / 65.8 | **83.2 / 69.7** | 74.8 / 59.0 | 79.0 / 64.1 | 82.8 / 67.9 |
+| t+3 | GRU ensemble | 86.0 / 75.5 | 87.2 / 79.3 | 80.5 / 67.3 | 84.5 / 73.9 | **87.3 / 77.4** |
 
-Position helps only further ahead (t+3); at t+1 the last sweep already
-encodes it. Per flight the GRU-ensemble gain is not significant (+1.1
-points, 95% CI -0.1 to +2.4, Holm p = 0.34). Camera features (frozen
-ResNet-18, 108 ms/frame on one CPU thread) hurt every model: -5.6 points
-at t+3 for the GRU ensemble (worse on 23 of 33 flights). Alone, the camera
-finds the current beam within noise 67% of the time (most frequent beam:
-15%), so it carries position information, but generic scene features
-overfit 35 flights; a UAV detector would be needed. With GPS, reduced
-beam training at t+3 reaches 99.3% exact top-1 and all-class macro-F1
-0.946 (power only 0.929) with 14.5 instead of 11.7 beams; CIs overlap.
+No side information significantly improves blind prediction per flight
+(GPS at t+3: +1.1 points, Wilcoxon p = 0.34, Holm 0.68). The camera
+embedding hurts (-5.6 points at t+3, worse on 23 of 33 flights). Alone, the
+UAV pixel finds the current beam within noise 81% of the time (embedding
+67%, most frequent beam 15%). With GPS, reduced beam training at t+3
+reaches 99.3% exact top-1 and all-class macro-F1 0.946 (power only 0.929)
+with 14.5 instead of 11.7 beams; CIs overlap. The other tables stay
+power-only (reproducible from the shipped CSV): `SCENARIO23_FEATURES=power`
+ignores `unit2/`. The `unit2_height` channel (31-391) doesn't match the
+<= 120 m BS distance, so it is used but not interpreted.
+
+**Sensing-aided closed loop** (`closed_loop_side_tracking.py`, paper
+Table XIV, Fig. 9). Each step adds the top-k beams of a random forest fed
+the previous step's UAV pixel and/or GPS; full sweeps only on beam loss.
+
+| Policy (33 flights) | Beams | Latency | Exact top-1 | SE % of genie |
+|---|---|---|---|---|
+| Full sweep every step | 64.0 | 5.00 ms | 100% | 96.5 |
+| Tracker, 4 tie partners, full every 8 | 13.2 | 1.05 ms | 97.2% | 99.1 |
+| Camera top-4 + tracker, loss-triggered | 7.4 | 0.59 ms | 98.6% | 99.5 |
+| GPS top-4 + tracker, loss-triggered | 7.3 | 0.59 ms | 99.1% | 99.6 |
+| **Camera + GPS top-4 + tracker, loss-triggered** | **7.0** | **0.56 ms** | **99.2%** | **99.6** |
+
+Camera + GPS beats the tracker on 25 flights and loses on 1 (+2.0 points,
+95% CI +1.3 to +2.9), with lower latency on 30 of 33.
 
 **Significance** (`significance_tests.py`, paper Table XIII). Over 33
 flights: the 4-partner tracker loses 2.8 points of exact top-1 vs a full
 sweep every step but gains 2.6 points of spectral efficiency on 32 of 33
 flights; 6 partners beat 4 by 2.0 points (26 better, 0 worse); 8 add
-nothing significant over 6. The other tables stay power-only (reproducible from the
-shipped CSV): run with `SCENARIO23_FEATURES=power` to ignore `unit2/`.
-The `unit2_height` channel (31–391) doesn't match the ≤ 120 m BS distance,
-so it is used but not interpreted.
+nothing significant over 6.
 
 **Conformal shortlists** (open-loop, like the table above). A measured
 set returns the exact best beam if and only if that beam is in the set,
@@ -371,6 +384,15 @@ GPS alone can't steer a 32×32 RIS: 5 m of error is wider than the beam.
 - `adaptive_pilot_plan` / `estimate_from_prior`: the pilot budget comes
   from the prior's angular uncertainty and the predicted SNR. The margin
   (128) was chosen on separate seeds from the reported runs.
+
+### 2026-10-30: Major update 14 (UAV locator, sensing-aided tracking)
+
+- Label-free UAV locator in the BS camera (`camera_beam_prediction.py
+  --locate`): camera-only within-noise 67% -> 81% at t+0, 54 ms/frame.
+- Camera + GPS candidates in the closed loop: 99.2% exact top-1 at
+  0.56 ms (tracker: 97.2% at 1.05 ms); paper Table XIV, Fig. 9.
+- Blind prediction with the UAV pixel: no significant gain (Table XI).
+- README: removed a duplicated table header and a misplaced paragraph.
 
 ### 2026-10-30: Major update 13 (camera, GPS-aided beam training, significance)
 

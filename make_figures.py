@@ -22,6 +22,7 @@ FIGURES = ROOT / "paper" / "figures"
 # neutral grey for baselines; ink colours for text.
 BLUE, ORANGE, AQUA = "#2a78d6", "#eb6834", "#1baf7a"
 YELLOW = "#eda100"   # slot 4: only with a distinct marker shape
+MAGENTA = "#e87ba4"  # slot 5: likewise
 GREY = "#8c8b86"
 INK, INK_MUTED, GRID = "#0b0b0b", "#52514e", "#e4e3df"
 
@@ -276,8 +277,9 @@ SIDE_INFORMATION = [
     # series also has its own marker shape.
     ("Power only", "power_only", BLUE, "o"),
     ("+ GPS", "gps", ORANGE, "s"),
-    ("+ camera", "camera", AQUA, "^"),
-    ("+ GPS + camera", "gps_camera", YELLOW, "D"),
+    ("+ camera emb.", "camera", AQUA, "^"),
+    ("+ GPS + camera emb.", "gps_camera", YELLOW, "D"),
+    ("+ UAV pixel", "uav_pixel", MAGENTA, "v"),
 ]
 
 
@@ -377,12 +379,55 @@ def figure_significance() -> None:
     save(figure, "fig_significance.png")
 
 
+def figure_side_tracking() -> None:
+    """Closed loop with camera / GPS candidates: accuracy and throughput against latency."""
+
+    summary = pd.DataFrame(json.loads((RESULTS / "closed_loop_side_tracking.json").read_text())["summary"])
+    summary = summary[~summary["policy"].str.startswith("genie")]
+    groups = [
+        ("No side information", lambda p: not any(k in p for k in ("camera", "GPS")), GREY, "o"),
+        ("Camera (UAV pixel)", lambda p: p.startswith("camera top"), AQUA, "^"),
+        ("GPS", lambda p: p.startswith("GPS"), ORANGE, "s"),
+        ("Camera + GPS", lambda p: p.startswith("camera + GPS"), BLUE, "D"),
+    ]
+    figure, axes = plt.subplots(1, 2, figsize=(COLUMN_WIDTH_IN * 2, 2.4))
+    for axis, column, scale, label, ylim in (
+            (axes[0], "exact_top1", 100.0, "Exact top-1, closed loop (%)", (91.5, 100.5)),
+            (axes[1], "se_10dB_pct_of_genie", 1.0, "Effective SE at 10 dB (% of genie)", (96, 100))):
+        for name, member, colour, marker in groups:
+            rows = summary[summary["policy"].map(member)]
+            axis.scatter(rows["latency_ms_mean"], scale * rows[column], color=colour, marker=marker, s=24,
+                         zorder=3, label=name, edgecolors="white", linewidths=0.4)
+        axis.set_xscale("log")
+        axis.set_xticks([0.5, 1, 2, 5])
+        axis.set_xticklabels(["0.5", "1", "2", "5"])
+        axis.set_xlim(0.4, 6.5)
+        axis.set_ylim(*ylim)
+        axis.set_xlabel("Mean beam-training latency per decision (ms)")
+        axis.set_ylabel(label)
+    reference = summary.set_index("policy")
+    for axis, column, scale, tracker_dy in ((axes[0], "exact_top1", 100.0, 0.0),
+                                            (axes[1], "se_10dB_pct_of_genie", 1.0, -0.3)):
+        for policy, text, dx, dy in (
+                ("tracker: window +/-1 + 4 tie partners, full every 8", "tracker, full /8", 1.08, tracker_dy),
+                ("full sweep every step", "full sweep", 0.62, 0),
+                ("camera + GPS top-4 + tracker, loss-triggered only", "camera + GPS top-4", 1.1, 0)):
+            x, y = reference.loc[policy, "latency_ms_mean"], scale * reference.loc[policy, column]
+            axis.annotate(text, (x, y), xytext=(x * dx, y + dy), fontsize=6.5, color=INK_MUTED,
+                          va="center", ha="left" if dx > 1 else "right")
+    handles, labels = axes[0].get_legend_handles_labels()
+    figure.legend(handles, labels, loc="upper center", ncol=4, fontsize=7, bbox_to_anchor=(0.5, 1.07))
+    figure.tight_layout()
+    save(figure, "fig_side_tracking.png")
+
+
 def main() -> None:
     figure_beam_training()
     figure_conformal()
     figure_closed_loop()
     figure_side_information()
     figure_significance()
+    figure_side_tracking()
     figure_tracking()
     figure_impairments()
     figure_ris_sizing()

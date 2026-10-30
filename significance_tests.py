@@ -43,8 +43,9 @@ CLOSED_LOOP = [
 ]
 CLOSED_LOOP_METRICS = {"exact_top1": "exact top-1", "se_10dB": "effective SE, 10 dB"}
 
-SIDE_INFORMATION = {"power only": ROOT, "+ GPS": ROOT / "gps", "+ camera": ROOT / "camera",
-                    "+ GPS + camera": ROOT / "gps_camera"}
+SIDE_INFORMATION = {"power only": ROOT, "+ GPS": ROOT / "gps", "+ camera emb.": ROOT / "camera",
+                    "+ GPS + camera emb.": ROOT / "gps_camera", "+ UAV pixel": ROOT / "uav_pixel",
+                    "+ GPS + UAV pixel": ROOT / "gps_uav_pixel"}
 BLIND_MODEL = "gru_soft_aug_ens"
 
 
