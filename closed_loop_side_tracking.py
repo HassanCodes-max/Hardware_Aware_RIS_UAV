@@ -58,6 +58,9 @@ SIDE_POLICIES = {
     "camera + GPS": [
         Policy("camera + GPS top-2 + tracker, loss-triggered only", None, window=1, partners=4, side=2),
         Policy("camera + GPS top-4 + tracker, loss-triggered only", None, window=1, partners=4, side=4),
+        # More candidates for the rarely seen beams that dominate all-class macro-F1.
+        Policy("camera + GPS top-6 + tracker, loss-triggered only", None, window=1, partners=4, side=6),
+        Policy("camera + GPS top-4 + 6 partners, loss-triggered only", None, window=1, partners=6, side=4),
     ],
 }
 # Stale GPS: the UAV's report arrives d steps late (~142 ms per step); the camera,
