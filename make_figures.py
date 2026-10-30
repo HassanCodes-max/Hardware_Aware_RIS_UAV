@@ -262,10 +262,60 @@ def figure_closed_loop() -> None:
     save(figure, "fig_closed_loop.png")
 
 
+GPS_MODELS = [
+    ("beam_sequence_metrics.csv", "persistence", "Persistence"),
+    ("beam_prediction_metrics.csv", "random_forest+sweep_prior", "RF + sweep prior"),
+    ("beam_sequence_metrics.csv", "gru_soft_target", "GRU, soft target"),
+    ("beam_sequence_metrics.csv", "gru_soft_aug_ens", "GRU ensemble"),
+]
+
+
+def gps_comparison() -> pd.DataFrame:
+    """Blind-prediction metrics, power only vs power + UAV GPS/kinematics."""
+
+    rows = []
+    for features, folder in (("Power only", "power_only"), ("Power + GPS", "gps")):
+        for file, model, name in GPS_MODELS:
+            table = pd.read_csv(RESULTS / folder / file)
+            for _, row in table[table["model"] == model].iterrows():
+                rows.append({"features": features, "model": name, "horizon": int(row["horizon"]),
+                             **{c: row[c] for c in ("within_noise_acc", "balanced_within_noise_acc",
+                                                    "top1_acc", "macro_f1", "power_ratio")}})
+    return pd.DataFrame(rows)
+
+
+def figure_gps() -> None:
+    """Within-noise accuracy, power only vs power + GPS (dumbbell per model and horizon)."""
+
+    table = gps_comparison()
+    names = [name for _, _, name in GPS_MODELS]
+    figure, axes = plt.subplots(1, 2, figsize=(COLUMN_WIDTH_IN * 2, 2.1), sharex=True)
+    for axis, horizon in zip(axes, (1, 3)):
+        rows = table[table["horizon"] == horizon]
+        power = 100 * rows[rows["features"] == "Power only"].set_index("model").loc[names, "within_noise_acc"]
+        gps = 100 * rows[rows["features"] == "Power + GPS"].set_index("model").loc[names, "within_noise_acc"]
+        y = np.arange(len(names))[::-1]
+        axis.hlines(y, power, gps, color=GRID, linewidth=2.5, zorder=1)
+        axis.scatter(power, y, color=BLUE, s=30, zorder=3, label="Power only")
+        axis.scatter(gps, y, color=ORANGE, marker="s", s=26, zorder=3, label="Power + GPS")
+        for yy, a_val, b_val in zip(y, power, gps):
+            axis.text(max(a_val, b_val) + 0.6, yy, f"{b_val - a_val:+.1f}", va="center", fontsize=7, color=INK_MUTED)
+        axis.set_yticks(y)
+        axis.set_yticklabels(names if horizon == 1 else [""] * len(names))
+        axis.set_title(f"t+{horizon}", fontsize=8, color=INK)
+        axis.set_xlim(75, 100)
+        axis.set_xlabel("Within noise, blind prediction (%)")
+        axis.grid(axis="y", visible=False)
+    axes[1].legend(loc="lower right", fontsize=7)
+    figure.tight_layout()
+    save(figure, "fig_gps.png")
+
+
 def main() -> None:
     figure_beam_training()
     figure_conformal()
     figure_closed_loop()
+    figure_gps()
     figure_tracking()
     figure_impairments()
     figure_ris_sizing()

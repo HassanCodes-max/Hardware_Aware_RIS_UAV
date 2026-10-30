@@ -151,6 +151,23 @@ best beam's power.
   0.86–0.90 to 0.91–0.93 with fewer beams. The GRU ensemble + tie graph
   is the cheapest t+3 setting (11.7 beams).
 
+**Position-aided prediction** (full Scenario 23 download; paper Table XI,
+Fig. 7). The models get UAV GPS (east/north from the BS, bearing), speed,
+velocity, height, pitch and roll. Within noise / balanced within noise, %:
+
+| Horizon | Model | Power only | Power + GPS |
+|---|---|---|---|
+| t+1 | GRU ensemble | 96.4 / 91.7 | 96.5 / 91.6 |
+| t+3 | RF + sweep prior | 78.5 / 63.0 | **82.7 / 65.3** |
+| t+3 | GRU, soft target | 81.1 / 65.8 | **83.2 / 69.7** |
+| t+3 | GRU ensemble | 86.0 / 75.5 | **87.2 / 79.3** |
+
+Position helps only further ahead (t+3); at t+1 the last sweep already
+encodes it. The other tables stay power-only (reproducible from the
+shipped CSV): run with `SCENARIO23_FEATURES=power` to ignore `unit2/`.
+The `unit2_height` channel (31–391) doesn't match the ≤ 120 m BS distance,
+so it is used but not interpreted.
+
 **Conformal shortlists** (open-loop, like the table above). A measured
 set returns the exact best beam if and only if that beam is in the set,
 so set coverage *is* exact top-1. Calibrating the set size on four folds
@@ -337,6 +354,14 @@ GPS alone can't steer a 32×32 RIS: 5 m of error is wider than the beam.
   from the prior's angular uncertainty and the predicted SNR. The margin
   (128) was chosen on separate seeds from the reported runs.
 
+### 2026-10-30: Major update 12 (full Scenario 23: GPS and kinematics)
+
+- Full download wired in (git-ignored). Raw mmWave files match the beam
+  CSV (max difference 3e-8).
+- GPS adds 1.1–4.2 within-noise points at t+3, nothing at t+1 (paper
+  Table XI, Fig. 7). `SCENARIO23_FEATURES=power` keeps the power-only
+  pipeline reproducible.
+
 ### 2026-10-30: Major update 11 (learned models in the loop, paper v3 figures)
 
 - `closed_loop_learned_tracking.py`: ten models trained on measured-only
@@ -422,7 +447,8 @@ GPS alone can't steer a 32×32 RIS: 5 m of error is wider than the beam.
 
 Ordered by impact. Check items off here as they're done.
 
-1. [ ] **Download the full Scenario 23 dev set (manual: needs sign-in).**
+1. [x] **Download the full Scenario 23 dev set (manual: needs sign-in).** Done 2026-10-30;
+   kept local (git-ignored). Results: paper Table XI / Fig. 7, `results/gps/`.
    Create a free account at deepsense6g.net → Scenarios → Scenario 23 →
    download the dev set. Unzip it so `unit1/` and `unit2/` sit inside
    `public_data/scenario23_dev/`, merging with what is already there.

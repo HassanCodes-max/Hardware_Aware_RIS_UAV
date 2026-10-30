@@ -25,6 +25,7 @@ Writes results/beam_prediction_metrics.json and .csv
 """
 
 import json
+import os
 import time
 from pathlib import Path
 
@@ -57,6 +58,9 @@ def load_scenario23() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, n
     Return power sweeps (N, 64), 0-based labels, sequence ids, times (s)
     and UAV kinematics (N, F), which is None unless the full Scenario 23
     download (with unit2/) is present.
+
+    Set SCENARIO23_FEATURES=power to ignore the kinematics even when they
+    are present (the paper's main, power-only results).
     """
 
     beams = pd.read_csv(DATA_DIR / "scenario23_beam_dataset.csv")
@@ -71,7 +75,9 @@ def load_scenario23() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, n
     clock = manifest["time_stamp[UTC]"].str.extract(r"(\d+)-(\d+)-(\d+)-(\d+)").astype(float)
     time_s = clock[0] * 3600 + clock[1] * 60 + clock[2] + clock[3] / 1000.0
 
-    kinematics = load_scenario23_kinematics(DATA_DIR, manifest)
+    kinematics = None
+    if os.environ.get("SCENARIO23_FEATURES", "auto") != "power":
+        kinematics = load_scenario23_kinematics(DATA_DIR, manifest)
     if kinematics is not None:
         kinematics = kinematics.to_numpy(float)
 
