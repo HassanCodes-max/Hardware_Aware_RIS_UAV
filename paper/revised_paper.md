@@ -441,19 +441,23 @@ it reaches 86.0% within noise and 96.8% power ratio. Trained on hard labels, a s
 persistence at t + 3; the soft target makes it competitive, and augmentation with ensembling makes it
 the best model on every metric at both horizons, including blind macro-F1 at t + 3 (0.28 vs 0.26).
 
-*Table VII. Blind beam prediction, GroupKFold over 35 sequences.*
+*Table VII. Blind beam prediction (no beam measured at the predicted time), GroupKFold over 35 sequences.
+Exact top-1 and macro-F1 are bounded by measurement noise: the last row is a non-causal oracle that sees
+the sweeps on both sides of the predicted one. In parentheses: exact top-1 as % of that bound. The
+deployed task, which measures a few beams, is in Tables VIII–X and XIV (best schemes: exact top-1 about 99%).*
 
 | Horizon | Model | Within noise | Balanced within noise | Top-3 | Power ratio | Exact top-1 | Macro-F1 |
 |---|---|---|---|---|---|---|---|
-| t+1 | Persistence | 93.7 | 86.3 | 94.5 | 98.6 | 69.2 | 0.45 |
-| t+1 | RF + sweep prior | 93.7 | 86.7 | 94.9 | 98.6 | 70.4 | 0.41 |
-| t+1 | GRU, hard label | 93.7 | 82.3 | 94.6 | 98.6 | 70.9 | 0.41 |
-| t+1 | GRU, soft target | 95.6 | 89.3 | 95.1 | 98.9 | 70.9 | 0.45 |
-| t+1 | **GRU ensemble, augmented** | **96.4** | **91.7** | **96.1** | **99.1** | **72.1** | **0.48** |
-| t+3 | Persistence | 78.1 | 66.1 | 80.3 | 93.7 | 53.3 | 0.26 |
-| t+3 | GRU, hard label | 73.2 | 57.9 | 80.6 | 93.1 | 49.5 | 0.21 |
-| t+3 | GRU, soft target | 81.1 | 65.8 | 84.8 | 95.5 | 55.3 | 0.24 |
-| t+3 | **GRU ensemble, augmented** | **86.0** | **75.5** | **86.9** | **96.8** | **56.7** | **0.28** |
+| t+1 | Persistence | 93.7 | 86.3 | 94.5 | 98.6 | 69.2 (88%) | 0.45 |
+| t+1 | RF + sweep prior | 93.7 | 86.7 | 94.9 | 98.6 | 70.4 (89%) | 0.41 |
+| t+1 | GRU, hard label | 93.7 | 82.3 | 94.6 | 98.6 | 70.9 (90%) | 0.41 |
+| t+1 | GRU, soft target | 95.6 | 89.3 | 95.1 | 98.9 | 70.9 (90%) | 0.45 |
+| t+1 | **GRU ensemble, augmented** | **96.4** | **91.7** | **96.1** | **99.1** | **72.1 (91%)** | **0.48** |
+| t+3 | Persistence | 78.1 | 66.1 | 80.3 | 93.7 | 53.3 (67%) | 0.26 |
+| t+3 | GRU, hard label | 73.2 | 57.9 | 80.6 | 93.1 | 49.5 (63%) | 0.21 |
+| t+3 | GRU, soft target | 81.1 | 65.8 | 84.8 | 95.5 | 55.3 (70%) | 0.24 |
+| t+3 | **GRU ensemble, augmented** | **86.0** | **75.5** | **86.9** | **96.8** | **56.7 (72%)** | **0.28** |
+| any | *Noise bound: oracle with sweeps t − 1 and t + 1* | – | – | – | – | *79.0 (100%)* | *0.59* |
 
 **Reduced beam training** (Table VIII, Fig. 5). Measuring a handful of predicted beams resolves the
 near-ties that blind prediction cannot. At t + 1, the GRU ensemble with the tie graph selects the exact
