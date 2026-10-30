@@ -67,6 +67,17 @@ Major updates to the research code, results and paper, newest first within each 
   from the prior's angular uncertainty and the predicted SNR. The margin
   (128) was chosen on separate seeds from the reported runs.
 
+### 2026-10-30: Major update 18 (proofread, stack-vs-stack test)
+
+- `significance_tests.py`: new "stacking" family (stacks vs the GRU ensemble
+  and all-sensing vs power-only stack). Sensing adds +1.1 / +3.4 points of
+  exact top-1 inside the stack (Holm p = 0.006 / 0.045); Table XIII.
+- Camera-embedding runs tried in the stack: exact top-1 moves by <= 0.1
+  points, so the stack keeps four runs (stated in the paper).
+- Paper proofread: Table XI refreshed from the metre/gated rerun, Sec. V-B
+  describes the stacked predictor, LightGBM reference [25] added and
+  checked, wording fixes (near-tie claim, Table IX caption).
+
 ### 2026-10-30: Major update 17 (stacked blind predictor, all-class macro-F1 ≥ 0.95 in closed loop)
 
 - New `blind_stacking.py`: nested stack of the GRU variants of every
@@ -74,7 +85,8 @@ Major updates to the research code, results and paper, newest first within each 
   the last sweep and a shifted-template tracker (sub-beam peak, aligned
   average, predicted shift). Blind exact top-1 72.1 → 75.6% at t+1 (96% of
   the noise bound) and 56.7 → 64.3% at t+3; within noise 97.2 / 89.6%;
-  per flight +3.6 / +7.6 points, Holm p ≤ 0.0014. New Fig. 5.
+  per flight +3.6 / +7.6 points, Holm p ≤ 0.003; sensing adds +1.1 / +3.4
+  points inside the stack (Holm p = 0.006 / 0.045). New Fig. 5.
 - `beam_training_overhead.py` shortlists from the stacked scores when they
   are present: t+1 single round 99.3% / macro-F1 0.961 with 6.4 beams
   (0.50 ms); t+3 two-round 99.4% / 0.935.

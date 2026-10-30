@@ -44,7 +44,7 @@ beams (7 classes with < 5 samples) and simulated physical-layer hardware.
 ```powershell
 cd Hardware_Aware_RIS_UAV
 python -m pip install -r requirements.txt
-python -m pytest tests          # 28 regression tests, about 10 s
+python -m pytest tests          # 29 regression tests, about 10 s
 ```
 
 ## Experiments
@@ -116,7 +116,8 @@ settings are chosen on the training folds only.
 
 Per flight (30 flights), the all-sensing stack beats the GRU ensemble by
 +3.6 points at t+1 (24 better, 4 worse) and +7.6 at t+3 (23 better, 6
-worse), Holm p <= 0.0014. Used as the shortlist for reduced beam training
+worse), Holm p <= 0.003; inside the stack, sensing adds +1.1 / +3.4 points
+over the power-only stack (Holm p = 0.006 / 0.045). Used as the shortlist for reduced beam training
 it matches the two-round GRU scheme at t+1 with fewer beams in one round
 (99.3%, macro-F1 0.961, 6.4 beams, 0.50 ms).
 
