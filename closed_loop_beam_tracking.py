@@ -66,6 +66,8 @@ POLICIES = [
     Policy("window +/-1 + 2 tie partners, full every 4", 4, window=1, partners=2),
     Policy("window +/-1 + 4 tie partners, full every 4", 4, window=1, partners=4),
     Policy("window +/-1 + 4 tie partners, full every 8", 8, window=1, partners=4),
+    Policy("window +/-1 + 6 tie partners, full every 8", 8, window=1, partners=6),
+    Policy("window +/-1 + 8 tie partners, full every 8", 8, window=1, partners=8),
     Policy("window +/-1, loss-triggered sweeps only", None, window=1),
     Policy("window +/-1 + 4 tie partners, loss-triggered sweeps only", None, window=1, partners=4),
     Policy("window +/-1 + 6 tie partners, loss-triggered sweeps only", None, window=1, partners=6),

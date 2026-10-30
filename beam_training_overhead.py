@@ -71,9 +71,8 @@ import pandas as pd
 from sklearn.metrics import f1_score
 from sklearn.model_selection import GroupKFold
 
-from beam_prediction import BEAMS, FOLDS, NOISE_TOLERANCE_DB, load_scenario23
+from beam_prediction import BEAMS, FOLDS, NOISE_TOLERANCE_DB, RESULTS_DIR, load_scenario23
 
-RESULTS_DIR = Path(__file__).resolve().parent / "results"
 HORIZONS = (1, 3)
 K_VALUES = (1, 2, 3, 4, 5, 6, 8, 10, 12, 16)
 TAU_VALUES = (0.5, 0.6, 0.7, 0.8, 0.85, 0.9, 0.93, 0.95, 0.97, 0.98, 0.99)
