@@ -443,21 +443,36 @@ the best model on every metric at both horizons, including blind macro-F1 at t +
 
 *Table VII. Blind beam prediction (no beam measured at the predicted time), GroupKFold over 35 sequences.
 Exact top-1 and macro-F1 are bounded by measurement noise: the last row is a non-causal oracle that sees
-the sweeps on both sides of the predicted one. In parentheses: exact top-1 as % of that bound. The
+the sweeps on both sides of the predicted one. In parentheses: exact top-1 as % of that bound.
+Decisive / near-tie: exact top-1 on samples whose best beam leads the runner-up by more than the 0.25 dB noise floor (25% of
+samples) and on the other 75%. The
 deployed task, which measures a few beams, is in Tables VIII–X and XIV (best schemes: exact top-1 about 99%).*
 
-| Horizon | Model | Within noise | Balanced within noise | Top-3 | Power ratio | Exact top-1 | Macro-F1 |
-|---|---|---|---|---|---|---|---|
-| t+1 | Persistence | 93.7 | 86.3 | 94.5 | 98.6 | 69.2 (88%) | 0.45 |
-| t+1 | RF + sweep prior | 93.7 | 86.7 | 94.9 | 98.6 | 70.4 (89%) | 0.41 |
-| t+1 | GRU, hard label | 93.7 | 82.3 | 94.6 | 98.6 | 70.9 (90%) | 0.41 |
-| t+1 | GRU, soft target | 95.6 | 89.3 | 95.1 | 98.9 | 70.9 (90%) | 0.45 |
-| t+1 | **GRU ensemble, augmented** | **96.4** | **91.7** | **96.1** | **99.1** | **72.1 (91%)** | **0.48** |
-| t+3 | Persistence | 78.1 | 66.1 | 80.3 | 93.7 | 53.3 (67%) | 0.26 |
-| t+3 | GRU, hard label | 73.2 | 57.9 | 80.6 | 93.1 | 49.5 (63%) | 0.21 |
-| t+3 | GRU, soft target | 81.1 | 65.8 | 84.8 | 95.5 | 55.3 (70%) | 0.24 |
-| t+3 | **GRU ensemble, augmented** | **86.0** | **75.5** | **86.9** | **96.8** | **56.7 (72%)** | **0.28** |
-| any | *Noise bound: oracle with sweeps t − 1 and t + 1* | – | – | – | – | *79.0 (100%)* | *0.59* |
+| Horizon | Model | Within noise | Balanced within noise | Top-3 | Power ratio | Exact top-1 | Macro-F1 | Decisive | Near-tie |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| t+1 | Persistence | 93.7 | 86.3 | 94.5 | 98.6 | 69.2 (88%) | 0.45 | 89.8 | 62.3 |
+| t+1 | RF + sweep prior | 93.7 | 86.7 | 94.9 | 98.6 | 70.4 (89%) | 0.41 | – | – |
+| t+1 | GRU, hard label | 93.7 | 82.3 | 94.6 | 98.6 | 70.9 (90%) | 0.41 | 93.1 | 63.5 |
+| t+1 | GRU, soft target | 95.6 | 89.3 | 95.1 | 98.9 | 70.9 (90%) | 0.45 | **94.7** | 63.0 |
+| t+1 | **GRU ens., augmented** | **96.4** | **91.7** | 96.1 | **99.1** | 72.1 (91%) | 0.48 | 94.1 | 64.7 |
+| t+1 | GRU ens. + sweep, fused | 96.3 | 90.9 | **96.3** | **99.1** | **72.4 (92%)** | **0.49** | 94.0 | **65.3** |
+| t+3 | Persistence | 78.1 | 66.1 | 80.3 | 93.7 | 53.3 (67%) | 0.26 | 69.2 | 47.9 |
+| t+3 | GRU, hard label | 73.2 | 57.9 | 80.6 | 93.1 | 49.5 (63%) | 0.21 | 73.6 | 41.5 |
+| t+3 | GRU, soft target | 81.1 | 65.8 | 84.8 | 95.5 | 55.3 (70%) | 0.24 | 78.6 | 47.5 |
+| t+3 | **GRU ens., augmented** | **86.0** | **75.5** | **86.9** | **96.8** | 56.7 (72%) | 0.28 | **78.7** | 49.4 |
+| t+3 | GRU ens. + sweep, fused | 85.2 | 74.7 | 86.5 | 96.5 | **57.3 (73%)** | **0.29** | 76.6 | **50.9** |
+| any | *Noise bound (non-causal oracle)* | – | – | – | – | *79.0 (100%)* | *0.59* | – | – |
+
+**Where blind exact prediction fails** (Table VII, `blind_prediction_analysis.py`). Exact top-1 depends
+almost entirely on whether the label is decided by the channel or by noise. On the 25% of samples whose
+best beam leads by more than the 0.25 dB noise floor, the GRU ensemble predicts the exact beam 94.1% of
+the time at t + 1 (95% flight-bootstrap CI 91.7–95.9%) and 78.7% at t + 3 (71.4–84.9%). On the other 75%,
+two or more beams are equal within the noise, the label is a coin toss among them, and every model,
+including persistence, is near 62–65% at t + 1. Blind exact top-1 therefore cannot approach 95% on this
+data, while the measured schemes below can. Fusing the GRU ensemble with the last sweep, with the weight
+chosen on the other folds' flights, adds 0.3 points of exact top-1 at t + 1 (72.4%) and 0.6 at t + 3
+(57.3%), and macro-F1 by 0.004 and 0.012, at the cost of 0.1–0.8 points of within-noise accuracy: the
+remaining gap to the 79% bound is the information in future sweeps that no causal predictor has.
 
 **Reduced beam training** (Table VIII, Fig. 5). Measuring a handful of predicted beams resolves the
 near-ties that blind prediction cannot. At t + 1, the GRU ensemble with the tie graph selects the exact
@@ -892,7 +907,7 @@ NeurIPS*, vol. 33, 2020.
 | Sec. VI-A, Fig. 2–3, Tables I–III | `run_physical_layer.py` | `results/physical_layer_metrics.json` |
 | Sec. VI-B, Tables IV–V | `run_physical_layer.py` (`parametric_study`, `adaptive_study`, `closed_loop_study`) | same |
 | Sec. VI-C, Table VI, Fig. 4 | `tracking_eval.py` | `results/tracking_metrics.json` |
-| Sec. VI-D, Table VII | `beam_prediction.py`, `beam_sequence_model.py` | `results/beam_*_metrics.csv` |
+| Sec. VI-D, Table VII | `beam_prediction.py`, `beam_sequence_model.py`; decisive / near-tie split and fused row: `blind_prediction_analysis.py` (`BEAM_RESULTS_DIR=results/power_only`) | `results/beam_*_metrics.csv` |
 | Sec. VI-D, Table VIII, Fig. 5 | `beam_training_overhead.py` (after `beam_sequence_model.py`) | `results/beam_training_overhead.json` |
 | Sec. VI-D, conformal shortlists | `conformal_beam_training.py` (after `beam_sequence_model.py`) | `results/conformal_beam_training.json` |
 | Sec. VI-D, Table IX | `closed_loop_beam_tracking.py` | `results/closed_loop_beam_tracking.json` |

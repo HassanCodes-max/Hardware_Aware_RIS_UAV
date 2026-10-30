@@ -67,6 +67,18 @@ Major updates to the research code, results and paper, newest first within each 
   from the prior's angular uncertainty and the predicted SNR. The margin
   (128) was chosen on separate seeds from the reported runs.
 
+### 2026-10-30: Major update 16 (blind exact prediction explained, figures, docs)
+
+- Table VII: noise bound row, exact top-1 as % of the bound, exact top-1 on
+  decisive samples (GRU ensemble 94.1% at t+1) vs near-ties, fused GRU +
+  last-sweep row (+0.3 / +0.6 points).
+- New Fig. 1 (system overview); Fig. 3 adds the 140 GHz NF panel; Fig. 4
+  adds the ridge predictor; figures renumbered.
+- Sensitivity to PA back-off, obliquity exponent and D-band power.
+- UAV height/altitude read as feet (take-off 1175.8 ft = local ground);
+  locator outlier gate; stale-GPS and latency-model sensitivity (results
+  pending the rerun).
+
 ### 2026-10-30: Major update 15 (references, NF sensitivity, closed-loop macro-F1)
 
 - References [20]-[22] verified; no [VERIFY] items left. [21] now cites a
