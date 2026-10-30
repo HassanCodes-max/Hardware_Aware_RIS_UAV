@@ -103,6 +103,8 @@ def paragraph_format(paragraph, align=WD_ALIGN_PARAGRAPH.JUSTIFY, before=0, afte
         fmt.left_indent = Inches(hanging)
         fmt.first_line_indent = Inches(-hanging)
     fmt.keep_with_next = keep_next
+    # Captions and headings: never split across pages, never left behind.
+    fmt.keep_together = keep_next
     return paragraph
 
 
