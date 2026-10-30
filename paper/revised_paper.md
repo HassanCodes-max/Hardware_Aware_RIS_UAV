@@ -350,6 +350,16 @@ grow to 32 cm (300×300 elements) for full availability with realistic impairmen
 4.8–6.1 dB [21], and with a 6 dB receiver 24 cm suffices at 140 GHz as well (7 dB: 28 cm). At sub-THz,
 transceiver hardware, not propagation, sets the RIS size, and the panel spans 24–32 cm across that range.
 
+**Sensitivity to assumed values.** Three further inputs are literature values or assumptions rather than
+measurements, so we vary each. (i) The Saleh coefficients are Saleh's travelling-wave-tube fit; how much
+they matter depends on how hard the PA is driven. From 3 to 12 dB input back-off the PA alone costs
+2.6 to 0.4 dB at 50 m, and all impairments with coupling-aware control 7.8 to 6.9 dB, so amplitude–phase
+coupling remains the dominant impairment at every operating point. (ii) For element obliquity exponents
+from 0 (isotropic) to 2, the 60 GHz RIS needs 64×64 elements for full coverage with ideal hardware and
+96×96 (24 cm) with realistic hardware, the same 2.25× as with the default 1.5; only a strongly directive
+element (exponent 3) changes it, to 80×80 and 112×112 (1.96×). (iii) Around the assumed 14 dBm D-band
+average power, 11 and 17 dBm move the 140 GHz panel to 36 and 28 cm (NF 10 dB).
+
 *Table III. Availability (%) over the flight at 140 GHz with D-band hardware (14 dBm average transmit
 power), by RIS size and receiver noise figure (NF).*
 
@@ -875,6 +885,7 @@ NeurIPS*, vol. 33, 2020.
 | Sec. VI-D, Table XII | `camera_beam_prediction.py --extract --locate` (needs torchvision) | `results/camera_beam_prediction.json` |
 | Sec. VI-D, locator check | `camera_beam_prediction.py --validate` | `results/camera_locator_validation.json` |
 | Sec. VI-A, Table III (NF rows) | `run_physical_layer.py` (`ris_sizing_140ghz_nf_sensitivity`) | `results/physical_layer_metrics.json` |
+| Sec. VI-A, assumed values | `run_physical_layer.py` (`assumption_sensitivity`) | `results/physical_layer_metrics.json` |
 | Sec. VI-D, Table XIV, Fig. 9 | `closed_loop_side_tracking.py` (after `--locate`) | `results/closed_loop_side_tracking.json` |
 | Sec. VI-D, GPS-aided beam training | `BEAM_RESULTS_DIR=results/gps` with `beam_training_overhead.py`, `conformal_beam_training.py` | `results/gps/` |
 | Sec. VI-D, Table XIII, Fig. 8 | `significance_tests.py` (after the runs above and `closed_loop_beam_tracking.py`) | `results/significance_tests.json` |
