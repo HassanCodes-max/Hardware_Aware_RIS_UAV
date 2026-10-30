@@ -384,7 +384,9 @@ def carrier_study(
     rows = []
 
     # D-band hardware is weaker: about 20 dBm PA saturation (InP, IMS 2020)
-    # -> 14 dBm average at 6 dB back-off, and LNA noise figures near 10 dB.
+    # -> 14 dBm average at 6 dB back-off, and a conservative 10 dB receiver
+    # noise figure (measured D-band SiGe LNAs alone: 4.8-6.1 dB; the receiver
+    # adds front-end loss and later stages). See the NF sensitivity below.
     cases = (
         ("60 GHz", 60e9, {}),
         ("140 GHz, 60 GHz-class hardware", 140e9, {}),
@@ -480,6 +482,16 @@ def main() -> None:
                     transmit_power_w=10 ** (14 / 10) / 1e3, noise_figure_db=10.0),
             sides=(75, 150, 225, 300),
         ),
+        # The 140 GHz RIS size hinges on the receiver noise figure: 6 dB is a
+        # measured D-band LNA plus ~1 dB, 7 dB the 60 GHz value, 10 dB the default.
+        "ris_sizing_140ghz_nf_sensitivity": {
+            f"nf_{nf:g}db": ris_sizing(
+                replace(config, carrier_frequency_hz=140e9,
+                        transmit_power_w=10 ** (14 / 10) / 1e3, noise_figure_db=nf),
+                sides=(150, 188, 225, 263, 300),
+            )
+            for nf in (6.0, 7.0, 10.0)
+        },
     }
 
     RESULTS_DIR.mkdir(exist_ok=True)

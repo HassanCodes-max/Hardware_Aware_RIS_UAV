@@ -192,6 +192,19 @@ the previous step's UAV pixel and/or GPS; full sweeps only on beam loss.
 
 Camera + GPS beats the tracker on 25 flights and loses on 1 (+2.0 points,
 95% CI +1.3 to +2.9), with lower latency on 30 of 33.
+Closed-loop macro-F1 (all classes / classes with >= 5 steps): tracker
+0.843 / 0.934, camera + GPS top-4 0.944 / 0.980, so the sensing-aided
+tracker meets 95% on exact top-1 and macro-F1 (>= 5) at 0.56 ms.
+
+Locator check against GPS (`--validate`, no labels): pixel -> east/north
+on held-out flights gives R^2 0.67 / 0.12, median 4.4 m (height is not
+recorded consistently, so a pixel fixes direction, not distance); about
+1% of frames are misdetected (pixel jumps > 100 px in 1.8% of frame pairs).
+
+**140 GHz RIS size vs receiver noise figure** (`run_physical_layer.py`,
+paper Table III): full availability needs 24 cm at NF 6 dB, 28 cm at
+7 dB, 32 cm at 10 dB (the default, conservative; measured D-band SiGe
+LNAs alone: 4.8-6.1 dB).
 
 **Significance** (`significance_tests.py`, paper Table XIII). Over 33
 flights: the 4-partner tracker loses 2.8 points of exact top-1 vs a full
@@ -385,6 +398,15 @@ GPS alone can't steer a 32×32 RIS: 5 m of error is wider than the beam.
   from the prior's angular uncertainty and the predicted SNR. The margin
   (128) was chosen on separate seeds from the reported runs.
 
+### 2026-10-30: Major update 15 (references, NF sensitivity, closed-loop macro-F1)
+
+- References [20]-[22] verified; no [VERIFY] items left. [21] now cites a
+  measured D-band SiGe LNA (NF 4.8-6.1 dB), and the model's 10 dB is
+  described as a conservative receiver NF with a 6/7/10 dB sensitivity:
+  the 140 GHz RIS needs 24-32 cm.
+- Closed-loop macro-F1 added: camera + GPS tracker 0.980 (>= 5 samples).
+- Locator validated against GPS direction; ~1% of frames misdetected.
+
 ### 2026-10-30: Major update 14 (UAV locator, sensing-aided tracking)
 
 - Label-free UAV locator in the BS camera (`camera_beam_prediction.py
@@ -514,8 +536,11 @@ Ordered by impact. Check items off here as they're done.
    Next, try a TCN or Transformer once GPS is available.
 4. [x] Paper rewritten: `paper/revised_paper.md`, and the IEEE Word
    version `paper/revised_paper_ieee.docx` (built by
-   `paper/build_docx.py`). Remaining: resolve the [VERIFY] items
-   (references [2], [7], [20], [21]), then rebuild the Word file.
+   `paper/build_docx.py`). All [VERIFY] items resolved (2026-10-30):
+   [20] full author list and pages, [21] replaced by a measured D-band
+   SiGe LNA (NF 4.8-6.1 dB; the model's 10 dB is now called a conservative
+   receiver NF, with a 6/7/10 dB sensitivity in Table III), [22] pinned to
+   TS 38.213 V17.9.0.
    The original plan was:
    - Table II: new task, split and metrics.
    - Sec. IV/VI-E: the array-gain metric; the conclusion is reversed.

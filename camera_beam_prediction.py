@@ -51,6 +51,7 @@ CAMERA_HORIZONS = (0, 1, 3)
 BATCH = 64
 UAV_FILE = DATA_DIR / "camera_uav_positions.npz"
 SKY_SIGMA_PX = 12
+DISAGREE_M = 5.0
 
 
 def extract_embeddings() -> None:
@@ -151,6 +152,55 @@ def uav_pixel_features() -> np.ndarray:
     return np.stack([cache["x"], cache["y"], cache["contrast"]], axis=1)
 
 
+def validate_locator() -> dict:
+    """
+    Check the UAV locator against GPS without labels. The camera looks up and the
+    UAV is nearly overhead (elevation 71-90 deg), so the pixel should map smoothly
+    to the UAV's east/north offset from the BS. A quadratic map is fitted on four
+    folds of flights and scored on the fifth; frames where camera and GPS disagree
+    by more than DISAGREE_M bound the locator's failure rate (GPS error included).
+    Also counts implausible jumps of the pixel between consecutive frames.
+    """
+
+    from sklearn.linear_model import LinearRegression
+    from sklearn.preprocessing import PolynomialFeatures
+
+    from public_data_adapter import load_scenario23_kinematics
+
+    manifest = pd.read_csv(DATA_DIR / "scenario23.csv")
+    gps = load_scenario23_kinematics(DATA_DIR, manifest)
+    target = gps[["uav_east_m", "uav_north_m"]].to_numpy(float)
+    pixel = uav_pixel_features()[:, :2]
+    sequences = manifest["seq_index"].to_numpy(int)
+
+    predicted = np.zeros_like(target)
+    for train, test in GroupKFold(n_splits=FOLDS).split(pixel, groups=sequences):
+        model = make_pipeline(PolynomialFeatures(2), LinearRegression()).fit(pixel[train], target[train])
+        predicted[test] = model.predict(pixel[test])
+    error_m = np.linalg.norm(predicted - target, axis=1)
+    r2 = [1.0 - np.sum((predicted[:, k] - target[:, k]) ** 2)
+          / np.sum((target[:, k] - target[:, k].mean()) ** 2) for k in range(2)]
+
+    # Consecutive frames of one flight (manifest order is time order within a flight).
+    same = sequences[1:] == sequences[:-1]
+    jump_px = np.hypot(np.diff(pixel[:, 0]) * 960, np.diff(pixel[:, 1]) * 540)[same]
+    gps_step_m = np.linalg.norm(np.diff(target, axis=0), axis=1)[same]
+
+    per_flight = pd.DataFrame({"flight": sequences, "error_m": error_m}).groupby("flight")["error_m"].median()
+    return {
+        "map": "quadratic pixel (x, y) -> GPS east/north, GroupKFold(5) over flights",
+        "r2_east_north": [round(float(v), 3) for v in r2],
+        "error_m_median_p90_p99": np.percentile(error_m, [50, 90, 99]).round(2).tolist(),
+        "frames_disagree_gt_5m_pct": round(float(100 * np.mean(error_m > DISAGREE_M)), 2),
+        "frames_disagree_gt_10m_pct": round(float(100 * np.mean(error_m > 2 * DISAGREE_M)), 2),
+        "worst_flight_median_error_m": round(float(per_flight.max()), 2),
+        "jump_px_median_p99": np.percentile(jump_px, [50, 99]).round(1).tolist(),
+        "jumps_gt_100px_pct": round(float(100 * np.mean(jump_px > 100)), 2),
+        "gps_step_m_median_p99": np.percentile(gps_step_m, [50, 99]).round(2).tolist(),
+        "worst_frames": [int(i) for i in np.argsort(-error_m)[:8]],
+    }
+
+
 def load_embeddings() -> tuple[np.ndarray, float]:
     if not EMBEDDING_FILE.exists():
         raise FileNotFoundError(f"{EMBEDDING_FILE} missing: run camera_beam_prediction.py --extract")
@@ -217,7 +267,16 @@ def main() -> None:
     parser.add_argument("--extract", action="store_true",
                         help="encode all camera frames first (needs torchvision)")
     parser.add_argument("--locate", action="store_true", help="locate the UAV in all frames first")
+    parser.add_argument("--validate", action="store_true",
+                        help="only check the UAV locator against GPS (needs unit2/)")
     args = parser.parse_args()
+
+    if args.validate:
+        report = validate_locator()
+        RESULTS_DIR.mkdir(exist_ok=True)
+        (RESULTS_DIR / "camera_locator_validation.json").write_text(json.dumps(report, indent=2))
+        print(json.dumps(report, indent=2))
+        return
 
     if args.extract or not EMBEDDING_FILE.exists():
         extract_embeddings()
