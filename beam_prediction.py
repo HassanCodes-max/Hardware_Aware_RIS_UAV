@@ -39,7 +39,9 @@ from public_data_adapter import load_scenario23_kinematics
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 DATA_DIR = PROJECT_ROOT / "public_data" / "scenario23_dev"
-RESULTS_DIR = PROJECT_ROOT / "results"
+# BEAM_RESULTS_DIR redirects every beam study's outputs (and the out-of-fold
+# predictions the downstream studies read), e.g. to results/gps.
+RESULTS_DIR = Path(os.environ.get("BEAM_RESULTS_DIR", PROJECT_ROOT / "results")).resolve()
 
 BEAMS = 64
 HISTORY = 3
@@ -59,8 +61,11 @@ def load_scenario23() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, n
     and UAV kinematics (N, F), which is None unless the full Scenario 23
     download (with unit2/) is present.
 
-    Set SCENARIO23_FEATURES=power to ignore the kinematics even when they
-    are present (the paper's main, power-only results).
+    SCENARIO23_FEATURES selects the per-sample side information:
+      auto (default)  UAV kinematics when unit2/ is present, else none;
+      power           none (the paper's main, power-only results);
+      camera          PCA of the BS camera's ResNet-18 embedding;
+      gps+camera      both. Camera modes need camera_beam_prediction.py --extract.
     """
 
     beams = pd.read_csv(DATA_DIR / "scenario23_beam_dataset.csv")
@@ -75,11 +80,21 @@ def load_scenario23() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, n
     clock = manifest["time_stamp[UTC]"].str.extract(r"(\d+)-(\d+)-(\d+)-(\d+)").astype(float)
     time_s = clock[0] * 3600 + clock[1] * 60 + clock[2] + clock[3] / 1000.0
 
-    kinematics = None
-    if os.environ.get("SCENARIO23_FEATURES", "auto") != "power":
-        kinematics = load_scenario23_kinematics(DATA_DIR, manifest)
-    if kinematics is not None:
-        kinematics = kinematics.to_numpy(float)
+    mode = os.environ.get("SCENARIO23_FEATURES", "auto")
+    if mode not in ("auto", "power", "camera", "gps+camera"):
+        raise ValueError(f"Unknown SCENARIO23_FEATURES={mode!r}")
+
+    side = []
+    if mode in ("auto", "gps+camera"):
+        gps = load_scenario23_kinematics(DATA_DIR, manifest)
+        if gps is None and mode == "gps+camera":
+            raise FileNotFoundError("SCENARIO23_FEATURES=gps+camera needs unit2/.")
+        if gps is not None:
+            side.append(gps.to_numpy(float))
+    if mode in ("camera", "gps+camera"):
+        from camera_beam_prediction import camera_components
+        side.append(camera_components())
+    kinematics = np.hstack(side) if side else None
 
     return power, labels, manifest["seq_index"].to_numpy(int), time_s.to_numpy(), kinematics
 
