@@ -65,7 +65,9 @@ def load_scenario23() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, n
       auto (default)  UAV kinematics when unit2/ is present, else none;
       power           none (the paper's main, power-only results);
       camera          PCA of the BS camera's ResNet-18 embedding;
-      gps+camera      both. Camera modes need camera_beam_prediction.py --extract.
+      gps+camera      both. Camera modes need camera_beam_prediction.py --extract;
+      uav_pixel       the UAV's pixel position and contrast in the camera frame;
+      gps+uav_pixel   both (these need camera_beam_prediction.py --locate).
     """
 
     beams = pd.read_csv(DATA_DIR / "scenario23_beam_dataset.csv")
@@ -81,19 +83,22 @@ def load_scenario23() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, n
     time_s = clock[0] * 3600 + clock[1] * 60 + clock[2] + clock[3] / 1000.0
 
     mode = os.environ.get("SCENARIO23_FEATURES", "auto")
-    if mode not in ("auto", "power", "camera", "gps+camera"):
+    if mode not in ("auto", "power", "camera", "gps+camera", "uav_pixel", "gps+uav_pixel"):
         raise ValueError(f"Unknown SCENARIO23_FEATURES={mode!r}")
 
     side = []
-    if mode in ("auto", "gps+camera"):
+    if mode in ("auto", "gps+camera", "gps+uav_pixel"):
         gps = load_scenario23_kinematics(DATA_DIR, manifest)
-        if gps is None and mode == "gps+camera":
-            raise FileNotFoundError("SCENARIO23_FEATURES=gps+camera needs unit2/.")
+        if gps is None and mode != "auto":
+            raise FileNotFoundError(f"SCENARIO23_FEATURES={mode} needs unit2/.")
         if gps is not None:
             side.append(gps.to_numpy(float))
     if mode in ("camera", "gps+camera"):
         from camera_beam_prediction import camera_components
         side.append(camera_components())
+    if mode in ("uav_pixel", "gps+uav_pixel"):
+        from camera_beam_prediction import uav_pixel_features
+        side.append(uav_pixel_features())
     kinematics = np.hstack(side) if side else None
 
     return power, labels, manifest["seq_index"].to_numpy(int), time_s.to_numpy(), kinematics

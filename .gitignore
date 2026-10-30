@@ -9,3 +9,4 @@ public_data/scenario23_dev/unit1/GPS_data/
 public_data/scenario23_dev/unit1/camera_data/
 public_data/scenario23_dev/resources/
 public_data/scenario23_dev/camera_resnet18_embeddings.npz
+public_data/scenario23_dev/camera_uav_positions.npz

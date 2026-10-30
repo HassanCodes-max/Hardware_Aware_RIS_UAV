@@ -57,6 +57,7 @@ class Policy:
     full_every: int | None  # None: full sweep only at the start and on beam loss
     window: int = 0
     partners: int = 0
+    side: int = 0           # top beams of a side-information ranking (camera, GPS) added per step
 
 
 POLICIES = [
@@ -74,8 +75,19 @@ POLICIES = [
 ]
 
 
-def run_flight(power: np.ndarray, policy: Policy, graph: np.ndarray) -> dict[str, np.ndarray]:
-    """Replay one flight; return per-step chosen beam, beams measured, latency and the measured mask."""
+def run_flight(
+    power: np.ndarray,
+    policy: Policy,
+    graph: np.ndarray,
+    side_ranking: np.ndarray | None = None,
+) -> dict[str, np.ndarray]:
+    """
+    Replay one flight; return per-step chosen beam, beams measured, latency and the measured mask.
+
+    side_ranking (steps, 64): beams ordered best first by a predictor that sees
+    no beam power at that step (e.g. the camera frame); its top policy.side
+    beams join the candidates.
+    """
 
     steps = len(power)
     chosen = np.empty(steps, dtype=int)
@@ -96,6 +108,8 @@ def run_flight(power: np.ndarray, policy: Policy, graph: np.ndarray) -> dict[str
             candidates.update(b for b in range(current - policy.window, current + policy.window + 1)
                               if 0 <= b < BEAMS)
             candidates.update(int(b) for b in graph[current, :policy.partners])
+            if policy.side:
+                candidates.update(int(b) for b in side_ranking[n, :policy.side])
             candidates = np.fromiter(candidates, dtype=int)
             best = int(candidates[power[n, candidates].argmax()])
             measured_count[n] = len(candidates)
@@ -135,6 +149,57 @@ def effective_se(
     return duty * (start + end) / 2.0
 
 
+GENIE = Policy("genie (best beam, no training time)", 1)
+
+
+def flight_record(policy: Policy, sequence: int, flight_power: np.ndarray, flight_time: np.ndarray,
+                  trace: dict[str, np.ndarray]) -> dict:
+    """Per-flight metrics of one replayed policy."""
+
+    best = flight_power.argmax(axis=1)
+    best_power = flight_power.max(axis=1)
+    latency = np.zeros(len(flight_power)) if policy is GENIE else trace["latency"]
+    rows = np.arange(len(flight_power))
+    loss_db = 10.0 * np.log10(best_power / flight_power[rows, trace["chosen"]])
+    record = {
+        "policy": policy.name,
+        "sequence": sequence,
+        "steps": len(flight_power),
+        "exact_top1": np.mean(trace["chosen"] == best),
+        "within_noise": np.mean(loss_db <= NOISE_TOLERANCE_DB),
+        "power_ratio": np.mean(flight_power[rows, trace["chosen"]] / best_power),
+        "beams_mean": trace["beams"].mean(),
+        "latency_ms_mean": latency.mean(),
+        "latency_ms_p95": np.percentile(latency, 95),
+        "full_sweep_fraction": trace["full_sweep"].mean(),
+    }
+    for snr_db in NOMINAL_SNR_DB:
+        se = effective_se(flight_power, trace["chosen"], latency, np.diff(flight_time), snr_db)
+        record[f"se_{snr_db:g}dB_sum"] = se.sum()
+        record["intervals"] = len(se)
+    return record
+
+
+def summarise_flights(flights: pd.DataFrame) -> pd.DataFrame:
+    """Pool over flights weighted by steps; SE also as % of the genie's."""
+
+    def pooled(group: pd.DataFrame) -> pd.Series:
+        weights = group["steps"]
+        out = {column: np.average(group[column], weights=weights)
+               for column in ("exact_top1", "within_noise", "power_ratio", "beams_mean",
+                              "latency_ms_mean", "full_sweep_fraction")}
+        out["latency_ms_p95_worst_flight"] = group["latency_ms_p95"].max()
+        for snr_db in NOMINAL_SNR_DB:
+            out[f"se_{snr_db:g}dB"] = group[f"se_{snr_db:g}dB_sum"].sum() / group["intervals"].sum()
+        return pd.Series(out)
+
+    summary = flights.groupby("policy", sort=False).apply(pooled)
+    genie = summary.loc[GENIE.name]
+    for snr_db in NOMINAL_SNR_DB:
+        summary[f"se_{snr_db:g}dB_pct_of_genie"] = 100.0 * summary[f"se_{snr_db:g}dB"] / genie[f"se_{snr_db:g}dB"]
+    return summary
+
+
 def main() -> None:
     """Replay every flight under every policy and summarise."""
 
@@ -151,50 +216,12 @@ def main() -> None:
             interval = np.diff(flight_time)
             if len(index) < 2 or np.any(interval <= 0):
                 continue
-            best = flight_power.argmax(axis=1)
-            best_power = flight_power.max(axis=1)
-
-            for policy in POLICIES + [Policy("genie (best beam, no training time)", 1)]:
-                genie = policy.name.startswith("genie")
+            for policy in POLICIES + [GENIE]:
                 trace = run_flight(flight_power, policy, graph)
-                latency = np.zeros(len(index)) if genie else trace["latency"]
-                rows = np.arange(len(index))
-                loss_db = 10.0 * np.log10(best_power / flight_power[rows, trace["chosen"]])
-                record = {
-                    "policy": policy.name,
-                    "sequence": int(sequence),
-                    "steps": len(index),
-                    "exact_top1": np.mean(trace["chosen"] == best),
-                    "within_noise": np.mean(loss_db <= NOISE_TOLERANCE_DB),
-                    "power_ratio": np.mean(flight_power[rows, trace["chosen"]] / best_power),
-                    "beams_mean": trace["beams"].mean(),
-                    "latency_ms_mean": latency.mean(),
-                    "latency_ms_p95": np.percentile(latency, 95),
-                    "full_sweep_fraction": trace["full_sweep"].mean(),
-                }
-                for snr_db in NOMINAL_SNR_DB:
-                    se = effective_se(flight_power, trace["chosen"], latency, interval, snr_db)
-                    record[f"se_{snr_db:g}dB_sum"] = se.sum()
-                    record["intervals"] = len(se)
-                flight_rows.append(record)
+                flight_rows.append(flight_record(policy, int(sequence), flight_power, flight_time, trace))
 
     flights = pd.DataFrame(flight_rows)
-
-    # Pool over flights weighted by steps; SE as % of the genie's.
-    def pooled(group: pd.DataFrame) -> pd.Series:
-        weights = group["steps"]
-        out = {column: np.average(group[column], weights=weights)
-               for column in ("exact_top1", "within_noise", "power_ratio", "beams_mean",
-                              "latency_ms_mean", "full_sweep_fraction")}
-        out["latency_ms_p95_worst_flight"] = group["latency_ms_p95"].max()
-        for snr_db in NOMINAL_SNR_DB:
-            out[f"se_{snr_db:g}dB"] = group[f"se_{snr_db:g}dB_sum"].sum() / group["intervals"].sum()
-        return pd.Series(out)
-
-    summary = flights.groupby("policy", sort=False).apply(pooled)
-    genie = summary.loc["genie (best beam, no training time)"]
-    for snr_db in NOMINAL_SNR_DB:
-        summary[f"se_{snr_db:g}dB_pct_of_genie"] = 100.0 * summary[f"se_{snr_db:g}dB"] / genie[f"se_{snr_db:g}dB"]
+    summary = summarise_flights(flights)
 
     RESULTS_DIR.mkdir(exist_ok=True)
     flights.to_csv(RESULTS_DIR / "closed_loop_beam_tracking_flights.csv", index=False)
