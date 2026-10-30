@@ -143,6 +143,11 @@ caps the SNDR however strong the link is.
   position-aided beam prediction is the standard approach for this scenario.
 - Action needed: download the full Scenario 23 development set (see
   README → Next steps).
+- **Resolved 2026-10-30:** the full development set (all 11,387 frames and
+  `unit2/`) is used locally and git-ignored under DeepSense's terms. GPS,
+  the camera embedding and the label-free UAV locator are in paper Tables
+  XI–XIV. `unit2_altitude` / `unit2_height` turned out to be in feet and are
+  converted to metres.
 
 ### H4. The sequence count doesn't match the dataset
 
@@ -252,8 +257,11 @@ Report these honestly in the paper:
 
 ## About the "95% minimum" target (2026-10-30)
 
-**Status: met on exact top-1 at both horizons, open-loop and closed-loop;
-met on all-class macro-F1 at t+1; at t+3 all-class macro-F1 is 0.929.**
+**Status (updated 2026-10-30, commit 1ada313): met on every closed-loop
+metric, including macro-F1 over all 56 classes (0.972 with camera + GPS
+candidates). Open-loop t+3 all-class macro-F1 stays below 0.95 (0.935 at
+best) because of beams seen fewer than five times. Blind exact top-1 is
+bounded at 79% by noise; the nested stack reaches 75.6%.**
 
 | Metric | Setting | Value [95% CI] | ≥ 95%? |
 |---|---|---|---|
@@ -265,6 +273,10 @@ met on all-class macro-F1 at t+1; at t+3 all-class macro-F1 is 0.929.**
 | Exact top-1, conformal set (target 95%) | t+1: 3 beams; t+3: 5.4 beams (open-loop) | 96.1% / 95.5% | ✅ (worst t+3 fold 92.7%) |
 | Exact top-1, closed loop | window ±1 + 4 tie partners, full sweep every 8 | 97.2% | ✅ |
 | Within noise, closed loop | same | 99.2% | ✅ |
+| Exact top-1, closed loop, sensing-aided | camera + GPS top-6 + tracker, loss-triggered sweeps, 0.66 ms | 99.46% | ✅ |
+| Macro-F1 all 56 classes, closed loop | same | 0.972 | ✅ |
+| Exact top-1, closed loop | camera + GPS top-4 + 6 tie partners, 0.67 ms | 99.57% (27 flights better, 0 worse) | ✅ |
+| Blind exact top-1, t+1 | nested stack, all sensing | 75.6% [72.4, 78.4] (bound 79%) | ❌ noise-bounded |
 
 - Open-loop figures assume full-sweep history (H6); closed-loop figures
   do not.
