@@ -67,6 +67,24 @@ Major updates to the research code, results and paper, newest first within each 
   from the prior's angular uncertainty and the predicted SNR. The margin
   (128) was chosen on separate seeds from the reported runs.
 
+### 2026-10-30: Major update 17 (stacked blind predictor, all-class macro-F1 ≥ 0.95 in closed loop)
+
+- New `blind_stacking.py`: nested stack of the GRU variants of every
+  side-information run, extra trees / LightGBM on long-history features,
+  the last sweep and a shifted-template tracker (sub-beam peak, aligned
+  average, predicted shift). Blind exact top-1 72.1 → 75.6% at t+1 (96% of
+  the noise bound) and 56.7 → 64.3% at t+3; within noise 97.2 / 89.6%;
+  per flight +3.6 / +7.6 points, Holm p ≤ 0.0014. New Fig. 5.
+- `beam_training_overhead.py` shortlists from the stacked scores when they
+  are present: t+1 single round 99.3% / macro-F1 0.961 with 6.4 beams
+  (0.50 ms); t+3 two-round 99.4% / 0.935.
+- Closed loop: camera + GPS top-6 candidates give 99.46% exact top-1 and
+  all-class macro-F1 0.972 at 0.66 ms; top-4 + 6 tie partners 99.57% and
+  0.963 / 0.992, better on 27 flights, worse on none.
+- Rerun with heights in metres and the gated locator: Tables XI–XIV,
+  Figs. 9–11, stale-GPS (up to 1.1 s) and timing sensitivity in the paper.
+- Limitations rewritten item by item, with what was done about each.
+
 ### 2026-10-30: Major update 16 (blind exact prediction explained, figures, docs)
 
 - Table VII: noise bound row, exact top-1 as % of the bound, exact top-1 on
