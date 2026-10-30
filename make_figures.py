@@ -21,6 +21,7 @@ FIGURES = ROOT / "paper" / "figures"
 # Validated categorical slots 1-3 (pass all-pairs CVD checks), plus a
 # neutral grey for baselines; ink colours for text.
 BLUE, ORANGE, AQUA = "#2a78d6", "#eb6834", "#1baf7a"
+YELLOW = "#eda100"   # slot 4: only with a distinct marker shape
 GREY = "#8c8b86"
 INK, INK_MUTED, GRID = "#0b0b0b", "#52514e", "#e4e3df"
 
@@ -270,13 +271,26 @@ GPS_MODELS = [
 ]
 
 
-def gps_comparison() -> pd.DataFrame:
-    """Blind-prediction metrics, power only vs power + UAV GPS/kinematics."""
+SIDE_INFORMATION = [
+    # (label, results folder, colour, marker); yellow is CVD-close to orange, so every
+    # series also has its own marker shape.
+    ("Power only", "power_only", BLUE, "o"),
+    ("+ GPS", "gps", ORANGE, "s"),
+    ("+ camera", "camera", AQUA, "^"),
+    ("+ GPS + camera", "gps_camera", YELLOW, "D"),
+]
+
+
+def side_information_comparison() -> pd.DataFrame:
+    """Blind-prediction metrics with each set of side information (missing runs skipped)."""
 
     rows = []
-    for features, folder in (("Power only", "power_only"), ("Power + GPS", "gps")):
+    for features, folder, _, _ in SIDE_INFORMATION:
         for file, model, name in GPS_MODELS:
-            table = pd.read_csv(RESULTS / folder / file)
+            path = RESULTS / folder / file
+            if not path.exists():
+                continue
+            table = pd.read_csv(path)
             for _, row in table[table["model"] == model].iterrows():
                 rows.append({"features": features, "model": name, "horizon": int(row["horizon"]),
                              **{c: row[c] for c in ("within_noise_acc", "balanced_within_noise_acc",
@@ -284,38 +298,91 @@ def gps_comparison() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def figure_gps() -> None:
-    """Within-noise accuracy, power only vs power + GPS (dumbbell per model and horizon)."""
+def figure_side_information() -> None:
+    """Within-noise accuracy per model and horizon, for every set of side information."""
 
-    table = gps_comparison()
-    names = [name for _, _, name in GPS_MODELS]
+    table = side_information_comparison()
+    names = [name for _, _, name in GPS_MODELS if name != "Persistence"]
     figure, axes = plt.subplots(1, 2, figsize=(COLUMN_WIDTH_IN * 2, 2.1), sharex=True)
     for axis, horizon in zip(axes, (1, 3)):
-        rows = table[table["horizon"] == horizon]
-        power = 100 * rows[rows["features"] == "Power only"].set_index("model").loc[names, "within_noise_acc"]
-        gps = 100 * rows[rows["features"] == "Power + GPS"].set_index("model").loc[names, "within_noise_acc"]
+        rows = table[(table["horizon"] == horizon) & table["model"].isin(names)]
         y = np.arange(len(names))[::-1]
-        axis.hlines(y, power, gps, color=GRID, linewidth=2.5, zorder=1)
-        axis.scatter(power, y, color=BLUE, s=30, zorder=3, label="Power only")
-        axis.scatter(gps, y, color=ORANGE, marker="s", s=26, zorder=3, label="Power + GPS")
-        for yy, a_val, b_val in zip(y, power, gps):
-            axis.text(max(a_val, b_val) + 0.6, yy, f"{b_val - a_val:+.1f}", va="center", fontsize=7, color=INK_MUTED)
+        values = rows.pivot(index="model", columns="features", values="within_noise_acc").loc[names] * 100
+        axis.hlines(y, values.min(axis=1), values.max(axis=1), color=GRID, linewidth=2.5, zorder=1)
+        offsets = np.linspace(0.18, -0.18, len(SIDE_INFORMATION))
+        for (features, _, colour, marker), offset in zip(SIDE_INFORMATION, offsets):
+            if features in values:
+                axis.scatter(values[features], y + offset, color=colour, marker=marker, s=22,
+                             zorder=3, label=features, edgecolors="white", linewidths=0.4)
+        base = table[(table["horizon"] == horizon) & (table["model"] == "Persistence")
+                     & (table["features"] == "Power only")]["within_noise_acc"]
+        if len(base):
+            axis.axvline(100 * base.iloc[0], color=INK_MUTED, linewidth=0.8, linestyle="--", zorder=1)
+            axis.text(100 * base.iloc[0], len(names) - 0.45, " persistence", fontsize=6.5,
+                      color=INK_MUTED, va="bottom")
         axis.set_yticks(y)
         axis.set_yticklabels(names if horizon == 1 else [""] * len(names))
+        axis.set_ylim(-0.6, len(names) - 0.1)
         axis.set_title(f"t+{horizon}", fontsize=8, color=INK)
-        axis.set_xlim(75, 100)
+        axis.set_xlim(76, 98)
         axis.set_xlabel("Within noise, blind prediction (%)")
         axis.grid(axis="y", visible=False)
-    axes[1].legend(loc="lower right", fontsize=7)
+    handles, labels = axes[0].get_legend_handles_labels()
+    figure.legend(handles, labels, loc="upper center", ncol=len(labels), fontsize=7,
+                  bbox_to_anchor=(0.5, 1.06))
     figure.tight_layout()
-    save(figure, "fig_gps.png")
+    save(figure, "fig_side_information.png")
+
+
+SIGNIFICANCE_LABELS = {
+    "window +/-1 + 4 tie partners, full every 8": "4 partners /8",
+    "window +/-1 + 6 tie partners, full every 8": "6 partners /8",
+    "window +/-1 + 8 tie partners, full every 8": "8 partners /8",
+    "window +/-1 + 4 tie partners, full every 4": "4 partners /4",
+    "window +/-1, full every 4": "window only /4",
+    "window +/-1 + 6 tie partners, loss-triggered sweeps only": "6 partners, loss-trig.",
+    "full sweep every step": "full sweep",
+}
+
+
+def figure_significance() -> None:
+    """Paired per-flight differences with flight-bootstrap 95% CIs."""
+
+    table = pd.read_csv(RESULTS / "significance_tests.csv")
+    panels = [
+        ("Closed loop: exact top-1", (table["family"] == "closed loop") & (table["metric"] == "exact top-1"),
+         lambda r: f"{SIGNIFICANCE_LABELS[r['a']]} vs {SIGNIFICANCE_LABELS[r['b']]}"),
+        ("Blind prediction: within noise", table["family"].str.startswith("blind") & (table["metric"] == "within noise"),
+         lambda r: f"{r['family'].split()[1]}: {r['a'].split(', ', 1)[1]}"),
+    ]
+    figure, axes = plt.subplots(1, 2, figsize=(COLUMN_WIDTH_IN * 2, 2.4))
+    for axis, (title, mask, label) in zip(axes, panels):
+        rows = table[mask].reset_index(drop=True)
+        y = np.arange(len(rows))[::-1]
+        significant = rows["holm_p"] < 0.05
+        axis.axvline(0, color=INK_MUTED, linewidth=0.8, zorder=1)
+        axis.hlines(y, rows["ci95_low"], rows["ci95_high"], color=BLUE, linewidth=1.6, zorder=2)
+        axis.scatter(rows["difference"][significant], y[significant], color=BLUE, s=24, zorder=3,
+                     label="Holm p < 0.05")
+        axis.scatter(rows["difference"][~significant], y[~significant], facecolor="white",
+                     edgecolor=BLUE, s=24, zorder=3, linewidths=1.2, label="not significant")
+        axis.set_yticks(y)
+        axis.set_yticklabels([label(r) for _, r in rows.iterrows()], fontsize=7)
+        axis.set_title(title, fontsize=8, color=INK)
+        axis.set_xlabel("Difference, A - B (points)")
+        axis.grid(axis="y", visible=False)
+    handles, labels = axes[0].get_legend_handles_labels()
+    figure.legend(handles, labels, loc="upper center", ncol=2, fontsize=7, bbox_to_anchor=(0.5, 1.07))
+    figure.tight_layout()
+    save(figure, "fig_significance.png")
 
 
 def main() -> None:
     figure_beam_training()
     figure_conformal()
     figure_closed_loop()
-    figure_gps()
+    figure_side_information()
+    figure_significance()
     figure_tracking()
     figure_impairments()
     figure_ris_sizing()
