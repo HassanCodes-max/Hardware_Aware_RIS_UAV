@@ -85,7 +85,7 @@ def test_kinematics_loader_reads_unit2_files(tmp_path):
 
     assert kinematics["uav_north_m"].iloc[0] > 10.0
     assert kinematics["uav_east_m"].iloc[1] > 8.0
-    assert np.allclose(kinematics["unit2_height"], 20.0)
+    assert np.allclose(kinematics["unit2_height"], 20.0 * 0.3048)   # stored in feet
     assert (kinematics["uav_elevation_rad"] > 0).all()
 
 

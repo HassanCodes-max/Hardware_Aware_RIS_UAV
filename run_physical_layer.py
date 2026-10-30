@@ -450,6 +450,58 @@ def coupling_sensitivity(
     return rows
 
 
+def smallest_full_coverage(sizing: dict) -> str | None:
+    """Smallest RIS in a ris_sizing result with 100% realistic availability."""
+
+    for name, row in sizing.items():
+        if row["hardware_aware_availability_pct"] >= 100.0:
+            return f"{name} ({row['aperture_cm']} cm)"
+    return None
+
+
+def assumption_sensitivity(config: SimulationConfig, position: np.ndarray) -> dict:
+    """
+    Sensitivity to the assumed (not measured) hardware and propagation values.
+
+    - PA operating point: the Saleh coefficients are Saleh's 1981 TWT fit; how
+      hard the PA is driven (input back-off) decides how much they matter.
+    - Element obliquity exponent q (amplitude ~ cos(theta)^(q/2)); 0 turns it off.
+    - D-band average transmit power around the 14 dBm assumed from [20].
+    """
+
+    ideal_db = link_metrics(position, config.ideal())["sndr_db"]
+    pa = []
+    for backoff in (3.0, 6.0, 9.0, 12.0):
+        pa_only = replace(config.ideal(), use_pa_nonlinearity=True, pa_input_backoff_db=backoff)
+        everything = replace(config, pa_input_backoff_db=backoff)
+        bs_to_ris, ris_to_uav = ris_element_channels(position, everything)
+        aware = link_metrics(position, everything, hardware_aware_phases(bs_to_ris * ris_to_uav, everything))
+        pa.append({"input_backoff_db": backoff,
+                   "pa_only_penalty_db": round(ideal_db - link_metrics(position, pa_only)["sndr_db"], 2),
+                   "all_impairments_aware_penalty_db": round(ideal_db - aware["sndr_db"], 2)})
+
+    sides_60 = (64, 80, 96, 112, 128, 160)
+    obliquity = []
+    for exponent in (0.0, 1.0, 1.5, 2.0, 3.0):
+        varied = replace(config, use_obliquity=exponent > 0, obliquity_exponent=max(exponent, 1e-9))
+        sizing = ris_sizing(varied, sides=sides_60)
+        obliquity.append({"exponent": exponent,
+                          "ideal_snr_db_at_reference": round(link_metrics(position, varied.ideal())["sndr_db"], 2),
+                          "smallest_full_coverage_realistic": smallest_full_coverage(sizing),
+                          "smallest_full_coverage_ideal": next(
+                              (f"{n} ({r['aperture_cm']} cm)" for n, r in sizing.items()
+                               if r["ideal_availability_pct"] >= 100.0), None)})
+
+    dband = []
+    for power_dbm in (11.0, 14.0, 17.0):
+        sizing = ris_sizing(replace(config, carrier_frequency_hz=140e9, transmit_power_w=10 ** (power_dbm / 10) / 1e3,
+                                    noise_figure_db=10.0), sides=(188, 225, 263, 300, 338))
+        dband.append({"average_tx_dbm": power_dbm, "noise_figure_db": 10.0,
+                      "smallest_full_coverage_realistic": smallest_full_coverage(sizing)})
+
+    return {"pa_backoff": pa, "obliquity": obliquity, "dband_tx_power": dband}
+
+
 def main() -> None:
     """Run every experiment and write one JSON file."""
 
@@ -482,6 +534,7 @@ def main() -> None:
                     transmit_power_w=10 ** (14 / 10) / 1e3, noise_figure_db=10.0),
             sides=(75, 150, 225, 300),
         ),
+        "assumption_sensitivity": assumption_sensitivity(config, reference),
         # The 140 GHz RIS size hinges on the receiver noise figure: 6 dB is a
         # measured D-band LNA plus ~1 dB, 7 dB the 60 GHz value, 10 dB the default.
         "ris_sizing_140ghz_nf_sensitivity": {

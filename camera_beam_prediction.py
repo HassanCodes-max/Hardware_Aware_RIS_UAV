@@ -52,6 +52,8 @@ BATCH = 64
 UAV_FILE = DATA_DIR / "camera_uav_positions.npz"
 SKY_SIGMA_PX = 12
 DISAGREE_M = 5.0
+GATE_PX = 100.0          # a UAV cannot move this far between frames ~142 ms apart
+GATE_CONFIRM = 2         # accept a far detection once it repeats this many frames
 
 
 def extract_embeddings() -> None:
@@ -143,13 +145,48 @@ def extract_uav_positions() -> None:
           f"({np.median(timings):.1f} ms/frame incl. JPEG decode, one process)")
 
 
-def uav_pixel_features() -> np.ndarray:
-    """(N, 3): UAV pixel x, y (fractions of the frame) and contrast."""
+def gate_track(x_px: np.ndarray, y_px: np.ndarray, sequences: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Causal outlier gate on the per-frame detections (frames in time order).
+
+    A detection more than GATE_PX from the last accepted position is held
+    (the last accepted position is used) until GATE_CONFIRM consecutive far
+    detections agree with each other, which re-acquires a UAV that truly moved
+    (or a wrong first lock). Returns the gated positions and a held-frame mask.
+    """
+
+    gx, gy = x_px.copy(), y_px.copy()
+    held = np.zeros(len(x_px), dtype=bool)
+    last, pending = None, []
+    for i in range(len(x_px)):
+        if i == 0 or sequences[i] != sequences[i - 1]:
+            last, pending = (x_px[i], y_px[i]), []
+            continue
+        if np.hypot(x_px[i] - last[0], y_px[i] - last[1]) <= GATE_PX:
+            last, pending = (x_px[i], y_px[i]), []
+            continue
+        if pending and np.hypot(x_px[i] - pending[-1][0], y_px[i] - pending[-1][1]) > GATE_PX:
+            pending = []
+        pending.append((x_px[i], y_px[i]))
+        if len(pending) >= GATE_CONFIRM:
+            last, pending = (x_px[i], y_px[i]), []
+            continue
+        gx[i], gy[i], held[i] = last[0], last[1], True
+    return gx, gy, held
+
+
+def uav_pixel_features(gated: bool = True) -> np.ndarray:
+    """(N, 3): UAV pixel x, y (fractions of the frame) and contrast; gated by default."""
 
     if not UAV_FILE.exists():
         raise FileNotFoundError(f"{UAV_FILE} missing: run camera_beam_prediction.py --locate")
     cache = np.load(UAV_FILE)
-    return np.stack([cache["x"], cache["y"], cache["contrast"]], axis=1)
+    x, y = cache["x"], cache["y"]
+    if gated:
+        sequences = pd.read_csv(DATA_DIR / "scenario23.csv")["seq_index"].to_numpy(int)
+        gx, gy, _ = gate_track(x * 960, y * 540, sequences)
+        x, y = gx / 960, gy / 540
+    return np.stack([x, y, cache["contrast"]], axis=1)
 
 
 def validate_locator() -> dict:
@@ -170,8 +207,10 @@ def validate_locator() -> dict:
     manifest = pd.read_csv(DATA_DIR / "scenario23.csv")
     gps = load_scenario23_kinematics(DATA_DIR, manifest)
     target = gps[["uav_east_m", "uav_north_m"]].to_numpy(float)
-    pixel = uav_pixel_features()[:, :2]
     sequences = manifest["seq_index"].to_numpy(int)
+    raw = uav_pixel_features(gated=False)[:, :2]
+    _, _, held = gate_track(raw[:, 0] * 960, raw[:, 1] * 540, sequences)
+    pixel = uav_pixel_features()[:, :2]
 
     predicted = np.zeros_like(target)
     for train, test in GroupKFold(n_splits=FOLDS).split(pixel, groups=sequences):
@@ -184,6 +223,7 @@ def validate_locator() -> dict:
     # Consecutive frames of one flight (manifest order is time order within a flight).
     same = sequences[1:] == sequences[:-1]
     jump_px = np.hypot(np.diff(pixel[:, 0]) * 960, np.diff(pixel[:, 1]) * 540)[same]
+    raw_jump_px = np.hypot(np.diff(raw[:, 0]) * 960, np.diff(raw[:, 1]) * 540)[same]
     gps_step_m = np.linalg.norm(np.diff(target, axis=0), axis=1)[same]
 
     per_flight = pd.DataFrame({"flight": sequences, "error_m": error_m}).groupby("flight")["error_m"].median()
@@ -196,6 +236,8 @@ def validate_locator() -> dict:
         "worst_flight_median_error_m": round(float(per_flight.max()), 2),
         "jump_px_median_p99": np.percentile(jump_px, [50, 99]).round(1).tolist(),
         "jumps_gt_100px_pct": round(float(100 * np.mean(jump_px > 100)), 2),
+        "jumps_gt_100px_pct_before_gate": round(float(100 * np.mean(raw_jump_px > 100)), 2),
+        "frames_held_by_gate_pct": round(float(100 * held.mean()), 2),
         "gps_step_m_median_p99": np.percentile(gps_step_m, [50, 99]).round(2).tolist(),
         "worst_frames": [int(i) for i in np.argsort(-error_m)[:8]],
     }

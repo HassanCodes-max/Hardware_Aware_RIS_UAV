@@ -304,6 +304,15 @@ SCENARIO23_KINEMATIC_COLUMNS = [
 ]
 
 
+# unit2_altitude and unit2_height are in feet: altitude - height is a constant
+# 1175.8 (IQR 0.1) over all samples, i.e. the take-off point is 1175.8 ft = 358 m
+# above sea level, which matches the ground at the BS (33.311 N, 111.892 W,
+# West Chandler, AZ, about 1168 ft); read as metres it would be 1176 m. In feet the
+# UAV flies 9.6-119 m above take-off, consistent with its <= 120 m range.
+FEET_COLUMNS = ("unit2_altitude", "unit2_height")
+FOOT_M = 0.3048
+
+
 def _read_values(
     path: Path,
 ) -> np.ndarray:
@@ -324,7 +333,8 @@ def load_scenario23_kinematics(
     Returns None when the unit2/ folder is absent (the repository only
     ships the beam CSV). Otherwise returns one row per manifest row with
     the UAV position relative to the BS (east/north metres), its bearing
-    and elevation seen from the BS, and the raw kinematic channels.
+    and elevation seen from the BS, and the raw kinematic channels
+    (altitude and height converted from feet to metres, see FEET_COLUMNS).
     """
 
     if not (scenario_root / "unit2").exists():
@@ -355,6 +365,10 @@ def load_scenario23_kinematics(
             kinematics[column] = [
                 _read_values(resolve(path))[0] for path in manifest[column]
             ]
+
+    for column in FEET_COLUMNS:
+        if column in kinematics:
+            kinematics[column] = kinematics[column] * FOOT_M
 
     if "unit2_height" in kinematics:
         horizontal_m = np.hypot(east_m, north_m)
