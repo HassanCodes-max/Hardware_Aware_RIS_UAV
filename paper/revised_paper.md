@@ -524,6 +524,40 @@ beam-training critical path.
 dashed: 95%. Right: at equal budget, extra beams chosen by the tie graph (line) versus by each of the
 ten learned models (squares).*
 
+**Position-aided prediction** (Table XI, Fig. 7). The full Scenario 23 release adds, for every sample,
+the UAV's GPS position, speed, velocity components, height, pitch and roll. We convert the GPS fix to
+east/north offsets from the base station and its bearing, append these and the raw kinematic channels
+to every step of each model's input window, and repeat the blind-prediction study with the same folds.
+All other tables use power sweeps only, so that they can be reproduced from the beam CSV shipped with
+the repository. The height channel ranges from 31 to 391 while the UAV–BS distance is at most 120 m, so
+its unit or reference is not documented consistently; the models standardise it, but we do not
+interpret it physically.
+
+Position helps when the prediction reaches further ahead. At t + 3, within-noise accuracy rises by 4.2
+points for the random forest (78.5 → 82.7%), 2.1 for the soft-target GRU and 1.1 for the GRU ensemble
+(86.0 → 87.2%), whose class-balanced score rises from 75.5 to 79.3%. At t + 1 the change is −0.8 to
++0.3 points: the last sweep already encodes where the UAV is. Exact top-1 moves by at most 3.7 points
+and stays far below the 79% noise ceiling, as it must.
+
+*Table XI. Blind beam prediction with power sweeps only versus power plus UAV GPS and kinematics
+(GroupKFold over 35 sequences). Within noise / class-balanced within noise / exact top-1, in %.*
+
+| Horizon | Model | Power only | Power + GPS |
+|---|---|---|---|
+| t+1 | Persistence | 93.7 / 86.3 / 69.2 | 93.7 / 86.3 / 69.2 |
+| t+1 | RF + sweep prior | 93.7 / 86.7 / 70.4 | 94.0 / 85.9 / 71.0 |
+| t+1 | GRU, soft target | 95.6 / 89.2 / 70.9 | 94.8 / 88.0 / 70.0 |
+| t+1 | GRU ensemble | **96.4 / 91.7 / 72.1** | **96.5 / 91.6 / 72.2** |
+| t+3 | Persistence | 78.1 / 66.1 / 53.3 | 78.1 / 66.1 / 53.3 |
+| t+3 | RF + sweep prior | 78.5 / 63.0 / 53.9 | 82.7 / 65.3 / 57.6 |
+| t+3 | GRU, soft target | 81.1 / 65.8 / 55.3 | 83.2 / 69.7 / 56.4 |
+| t+3 | GRU ensemble | **86.0 / 75.5 / 56.7** | **87.2 / 79.3 / 57.8** |
+
+![Fig. 7](figures/fig_gps.png)
+
+*Fig. 7. Blind within-noise accuracy with power sweeps only (circles) and with UAV GPS and kinematics
+added (squares); labels give the change in points.*
+
 ---
 
 ## VII. Discussion
@@ -552,8 +586,8 @@ imbalance [19] lowered every metric because the beam distribution differs betwee
 
 **Limitations.** Saleh and coupling coefficients are literature values, not measurements of a 60 GHz
 PA or RIS; Table II bounds the effect of the coupling strength. The obliquity exponent is assumed. The physical-layer results are simulated; the
-beam-prediction results use power sweeps only, because the UAV GPS files of Scenario 23 were not
-available to us at the time of writing. The all-class macro-F1 at t + 3 (0.929) is limited by beams
+beam-prediction results use power sweeps only except in Table XI, where UAV position adds 1–4 points
+at t + 3; the UAV height channel's unit is not documented consistently. The all-class macro-F1 at t + 3 (0.929) is limited by beams
 seen only once; more flights, not a different model, are needed to estimate it reliably. The latency
 model uses standard 5G NR FR2 timing, not the testbed's own sweep timing. The Table VIII figures are
 open-loop (they assume full-sweep history); Table IX gives the closed-loop figures. Effective spectral
@@ -571,9 +605,9 @@ Kalman-based prediction preserves 99.3% of the array gain at 500 ms latency; and
 training with a learned beam-tie graph selects the exact optimal beam 99.3% of the time given full-sweep
 history and 97.2–99.3% in a closed-loop replay of every flight, with 1.05–1.31 ms of beam training per
 decision instead of 5 ms; deep sequence models trained on measured-only data did not improve on it at
-equal budget. All reported metrics are evaluated under sequence-level cross-validation. Future work will add UAV position and camera
-input to beam prediction (the full Scenario 23 release), measured hardware coefficients, and paired
-per-flight significance tests between tracking policies.
+equal budget. All reported metrics are evaluated under sequence-level cross-validation. UAV position improves blind prediction at a 0.4 s
+horizon by 1–4 points. Future work will add camera input to beam prediction, measured hardware
+coefficients, and paired per-flight significance tests between tracking policies.
 
 ---
 
@@ -667,4 +701,5 @@ NeurIPS*, vol. 33, 2020.
 | Sec. VI-D, conformal shortlists | `conformal_beam_training.py` (after `beam_sequence_model.py`) | `results/conformal_beam_training.json` |
 | Sec. VI-D, Table IX | `closed_loop_beam_tracking.py` | `results/closed_loop_beam_tracking.json` |
 | Sec. VI-D, Table X, Fig. 6 | `closed_loop_learned_tracking.py` | `results/closed_loop_learned_tracking.json` |
+| Sec. VI-D, Table XI, Fig. 7 | `beam_prediction.py`, `beam_sequence_model.py` with the full Scenario 23 download; `SCENARIO23_FEATURES=power` reproduces the power-only tables | `results/gps/`, `results/power_only/` |
 | All figures | `make_figures.py` | `paper/figures/` |
