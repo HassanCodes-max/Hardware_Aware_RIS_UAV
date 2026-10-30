@@ -46,3 +46,20 @@ def test_power_mode_has_no_side_information(monkeypatch):
     monkeypatch.setenv("SCENARIO23_FEATURES", "power")
     power, labels, sequences, time_s, side = beam_prediction.load_scenario23()
     assert side is None and power.shape == (len(labels), beam_prediction.BEAMS)
+
+
+def test_blind_per_flight_scores_each_flight_separately():
+    import numpy as np
+    from significance_tests import blind_per_flight
+    target_power = np.full((4, 64), 0.01)
+    target_power[:, 5] = 1.0
+    target_power[:, 6] = 0.99        # within 0.25 dB of the best beam
+    data = {"target_power": target_power, "target": np.full(4, 5), "groups": np.array([1, 1, 2, 2])}
+    scores = np.zeros((4, 64))
+    scores[[0, 2], 5] = 1.0          # exact
+    scores[1, 6] = 1.0               # within noise, not exact
+    scores[3, 40] = 1.0              # wrong
+    table = blind_per_flight(scores, data)
+    assert table.loc[1, "exact_top1"] == 0.5 and table.loc[1, "within_noise"] == 1.0
+    assert table.loc[2, "exact_top1"] == 0.5 and table.loc[2, "within_noise"] == 0.5
+    assert list(table["samples"]) == [2, 2]

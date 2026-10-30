@@ -15,7 +15,8 @@ vs B on the same held-out flights we report
 Families: closed-loop tracking policies (results/closed_loop_beam_tracking_flights.csv),
 and blind prediction with and without side information (out-of-fold
 predictions of the GRU ensemble in results/, results/gps/, results/camera/,
-results/gps_camera/, whichever exist).
+results/gps_camera/, whichever exist), and the nested stacks of blind_stacking.py
+(results/stacked_power/, results/stacked_all/) against the GRU ensemble and each other.
 """
 
 import json
@@ -94,6 +95,48 @@ def closed_loop_family(rng) -> list[dict]:
     return rows
 
 
+def blind_per_flight(scores: np.ndarray, data) -> pd.DataFrame:
+    """Per-flight within-noise and exact top-1 of a (samples, 64) blind score matrix."""
+
+    chosen = scores.argmax(axis=1)
+    power = data["target_power"]
+    loss_db = 10.0 * np.log10(power.max(axis=1) / power[np.arange(len(chosen)), chosen])
+    frame = pd.DataFrame({"flight": data["groups"],
+                          "within_noise": loss_db <= NOISE_TOLERANCE_DB,
+                          "exact_top1": chosen == data["target"]})
+    return frame.groupby("flight").agg(within_noise=("within_noise", "mean"),
+                                       exact_top1=("exact_top1", "mean"),
+                                       samples=("within_noise", "size"))
+
+
+def compare(family: str, a_name: str, a: pd.DataFrame, b_name: str, b: pd.DataFrame, rng) -> list[dict]:
+    a = a.loc[b.index]
+    return [{"family": family, "metric": label, "a": a_name, "b": b_name,
+             **paired_test(100.0 * a[metric].to_numpy(), 100.0 * b[metric].to_numpy(),
+                           b["samples"].to_numpy(float), rng)}
+            for metric, label in (("within_noise", "within noise"), ("exact_top1", "exact top-1"))]
+
+
+def stacking_family(rng) -> list[dict]:
+    """Nested stacks of blind_stacking.py against the GRU ensemble and against each other."""
+
+    rows = []
+    for horizon in (1, 3):
+        paths = {name: ROOT / folder / f"beam_sequence_oof_h{horizon}.npz"
+                 for name, folder in (("power only", "stacked_power"), ("all sensing", "stacked_all"))}
+        if not all(p.exists() for p in paths.values()):
+            continue
+        power, sensing = np.load(paths["power only"]), np.load(paths["all sensing"])
+        gru = blind_per_flight(power[BLIND_MODEL], power)
+        stack_power = blind_per_flight(power["stacked"], power)
+        stack_all = blind_per_flight(sensing["stacked"], sensing)
+        family = f"stacking t+{horizon}"
+        rows += compare(family, "Stacked, power only", stack_power, "GRU ensemble, power only", gru, rng)
+        rows += compare(family, "Stacked, all sensing", stack_all, "GRU ensemble, power only", gru, rng)
+        rows += compare(family, "Stacked, all sensing", stack_all, "Stacked, power only", stack_power, rng)
+    return rows
+
+
 def blind_family(rng) -> list[dict]:
     per_flight = {}
     for name, folder in SIDE_INFORMATION.items():
@@ -102,15 +145,7 @@ def blind_family(rng) -> list[dict]:
             if not path.exists():
                 continue
             data = np.load(path)
-            chosen = data[BLIND_MODEL].argmax(axis=1)
-            power = data["target_power"]
-            loss_db = 10.0 * np.log10(power.max(axis=1) / power[np.arange(len(chosen)), chosen])
-            frame = pd.DataFrame({"flight": data["groups"],
-                                  "within_noise": loss_db <= NOISE_TOLERANCE_DB,
-                                  "exact_top1": chosen == data["target"]})
-            per_flight[(name, horizon)] = frame.groupby("flight").agg(
-                within_noise=("within_noise", "mean"), exact_top1=("exact_top1", "mean"),
-                samples=("within_noise", "size"))
+            per_flight[(name, horizon)] = blind_per_flight(data[BLIND_MODEL], data)
 
     rows = []
     for horizon in (1, 3):
@@ -119,19 +154,14 @@ def blind_family(rng) -> list[dict]:
             other = per_flight.get((name, horizon))
             if base is None or other is None:
                 continue
-            other = other.loc[base.index]
-            for metric, label in (("within_noise", "within noise"), ("exact_top1", "exact top-1")):
-                rows.append({"family": f"blind t+{horizon}", "metric": label,
-                             "a": f"GRU ensemble, {name}", "b": "GRU ensemble, power only",
-                             **paired_test(100.0 * other[metric].to_numpy(),
-                                           100.0 * base[metric].to_numpy(),
-                                           base["samples"].to_numpy(float), rng)})
+            rows += compare(f"blind t+{horizon}", f"GRU ensemble, {name}", other,
+                            "GRU ensemble, power only", base, rng)
     return rows
 
 
 def main() -> None:
     rng = np.random.default_rng(SEED)
-    rows = closed_loop_family(rng) + blind_family(rng)
+    rows = closed_loop_family(rng) + blind_family(rng) + stacking_family(rng)
     table = pd.DataFrame(rows)
     for metric_family, group in table.groupby(["family", "metric"]).groups.items():
         table.loc[group, "holm_p"] = holm(table.loc[group, "wilcoxon_p"].tolist())

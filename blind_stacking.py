@@ -47,6 +47,8 @@ from significance_tests import holm, paired_test
 RESULTS = PROJECT_ROOT / "results"
 RUNS = {"power only": ("power_only", "power"), "GPS": ("gps", "auto"),
         "UAV pixel": ("uav_pixel", "uav_pixel"), "GPS + UAV pixel": ("gps_uav_pixel", "gps+uav_pixel")}
+# The camera-embedding runs (results/camera, results/gps_camera) were tried as well: exact top-1 moved by
+# <= 0.1 points (75.7 / 64.3%) and they got small weights, so the stack keeps the four runs above.
 GRU_KEYS = ("gru_hard_label", "gru_soft_target", "gru_soft_aug_ens")
 TREE_RUNS = ("power only", "GPS + UAV pixel")   # trees are slow; fit them on the two extremes
 SHIFT_GRID = [(fit, align, gain) for fit in (4, 8, 16) for align in (1, 2, 4) for gain in (0.25, 0.5, 0.75)]
