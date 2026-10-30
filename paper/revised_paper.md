@@ -1,8 +1,8 @@
 # Hardware-Aware AI-Assisted Beam Training, Tracking, and Channel Estimation for RIS-Assisted mmWave UAV Links
 
 *Revised draft v3 (2026-10-30). Every number below is produced by the scripts in this repository; the
-section "Reproducing this paper" at the end maps each table and figure to its script. Items marked
-**[VERIFY]** need the author's confirmation before submission.*
+section "Reproducing this paper" at the end maps each table and figure to its script. All references
+have been checked against their publishers' records.*
 
 **Maavia**, Department of Computer Science, Institute of Space Technology (IST), Islamabad, Pakistan
 
@@ -30,8 +30,8 @@ tie-graph tracking selects the exact optimal beam 97.2–99.3% of the time with 
 training per decision instead of 5 ms, and per-flight tests confirm its spectral-efficiency gain over full
 sweeps on 32 of 33 flights. Adding candidate beams from the UAV's GPS and from its position in the base
 station's camera image, located without labels, lets the tracker drop periodic full sweeps: it then
-selects the exact optimal beam 99.2% of the time with 0.56 ms per decision, better than the tie-graph
-tracker on 25 of 33 flights. Ten deep sequence models trained on measured-only data do not beat the tie
+selects the exact optimal beam 99.2% of the time (macro-F1 0.98 over beams with at least five samples)
+with 0.56 ms per decision, better than the tie-graph tracker on 25 of 33 flights. Ten deep sequence models trained on measured-only data do not beat the tie
 graph at equal measurement budget, and neither position nor camera features significantly improve blind
 prediction, under sequence-level cross-validation.
 
@@ -344,16 +344,21 @@ availability (SNDR ≥ 0 dB) with ideal hardware but only 57% with realistic har
 same transceiver hardware, 140 GHz performs slightly better (ideal SNR 16.6 vs 15.8 dB at 20 m; 47.5% vs
 34.4% availability): it avoids the 60 GHz oxygen line (0.69 vs 14.6 dB/km) and fits 5.5× more elements in
 the same area. With published D-band hardware (about 20 dBm PA saturation [20], hence 14 dBm average at
-6 dB back-off, and an LNA noise figure near 10 dB [21]) the link loses about 9 dB, and the RIS must grow
-to 32 cm (300×300 elements) for full availability with realistic impairments, against 24 cm at 60 GHz
-(Table III). At sub-THz, transceiver hardware, not propagation, sets the RIS size.
+6 dB back-off) and a conservative 10 dB receiver noise figure the link loses about 9 dB, and the RIS must
+grow to 32 cm (300×300 elements) for full availability with realistic impairments, against 24 cm at
+60 GHz (Table III). The receiver noise figure is the decisive assumption: D-band SiGe LNAs alone measure
+4.8–6.1 dB [21], and with a 6 dB receiver 24 cm suffices at 140 GHz as well (7 dB: 28 cm). At sub-THz,
+transceiver hardware, not propagation, sets the RIS size, and the panel spans 24–32 cm across that range.
 
-*Table III. Availability (%) over the flight, 140 GHz with D-band hardware, ideal / realistic RIS.*
+*Table III. Availability (%) over the flight at 140 GHz with D-band hardware (14 dBm average transmit
+power), by RIS size and receiver noise figure (NF).*
 
-| RIS (aperture) | 75×75 (8 cm) | 150×150 (16 cm) | 225×225 (24 cm) | 300×300 (32 cm) |
-|---|---|---|---|---|
-| Ideal hardware | 13.1 | 68.9 | 100 | 100 |
-| Realistic, coupling-aware | 1.6 | 27.9 | 67.2 | 100 |
+| RIS (aperture) | 75×75 (8 cm) | 150×150 (16 cm) | 188×188 (20 cm) | 225×225 (24 cm) | 263×263 (28 cm) | 300×300 (32 cm) |
+|---|---|---|---|---|---|---|
+| Ideal hardware, NF 10 dB | 13.1 | 68.9 | 100 | 100 | 100 | 100 |
+| Realistic, coupling-aware, NF 10 dB | 1.6 | 27.9 | 45.9 | 67.2 | 95.1 | 100 |
+| Realistic, coupling-aware, NF 7 dB | – | 41.0 | 67.2 | 98.4 | 100 | 100 |
+| Realistic, coupling-aware, NF 6 dB | – | 45.9 | 75.4 | 100 | 100 | 100 |
 
 ### B. Channel Estimation
 
@@ -555,7 +560,13 @@ labels, 79% of the variance). (ii) UAV localisation without labels: the frame mi
 copy of itself (σ = 12 px) removes the smooth sky, and the most negative 3 × 3 mean of the residual is
 the UAV. Its pixel (x, y) and contrast form a three-number feature. In 95% of frames the UAV is at least
 29 grey levels darker than the surrounding sky; inspected frames show the detection on the UAV body,
-also next to the glare and when the UAV is close. The locator takes 54 ms per frame on one CPU process,
+also next to the glare and when the UAV is close. We also check the locator against GPS, without labels:
+a quadratic map from pixel to the UAV's east/north offset, fitted on other flights, explains 67% of the
+east and 12% of the north variance (median error 4.4 m). The UAV is nearly overhead (elevation 71–90°)
+and its height is not recorded consistently, so a pixel fixes the direction but not the distance; in
+the frames with the largest disagreement the detection is visibly on the UAV. The pixel jumps by more
+than 100 px between consecutive frames in 1.8% of frame pairs, while the GPS moves at most 2.2 m (99th
+percentile), so about 1% of frames are misdetected. The locator takes 54 ms per frame on one CPU process,
 most of it JPEG decoding; the ResNet-18 encoder takes 108 ms on one thread.
 
 Alone, the UAV pixel identifies the current beam within noise 81.1% of the time (59.0% exact), against
@@ -672,27 +683,31 @@ of the genie's spectral efficiency at 10 dB, within 0.03 points of the best poli
 information, dropping the periodic sweeps costs 4.5 points (92.70%), so the candidates are what make
 loss-triggered sweeps safe. Without tie partners, camera candidates are not enough (96.12%): the camera
 locates the UAV, the tie graph resolves which of the beams near that direction is strongest. Full sweeps
-remain for beam loss in 1.8% of steps, so the 95th-percentile latency of the worst flight is 6 ms.
+remain for beam loss in 1.8% of steps, so the 95th-percentile latency of the worst flight is 6 ms. The
+gain extends to rare beams: macro-F1 rises from 0.934 to 0.980 over beams with at least five steps (0.843
+to 0.944 over all classes, where beams seen once or twice still dominate), so in closed loop the
+sensing-aided tracker meets the 95% target on exact top-1 and macro-F1 at half the latency.
 
 *Table XIV. Closed-loop replay of 33 flights with camera (UAV pixel) and GPS candidates; "+ T": with the
-four-partner tracker; "loss": full sweeps only on beam loss (1.8% of steps). ms: mean beam-training time
+four-partner tracker; "loss": full sweeps only on beam loss (1.8% of steps; tracker with full every 8: 13.9%). Macro-F1 over
+all best-beam classes / classes with at least five steps. ms: mean beam-training time
 per decision (95th percentile on the worst flight: 6.0 ms, full sweep every step 5.0 ms). SE: effective
 spectral efficiency at 10 dB, % of genie. Δ: change in exact top-1 against the tracker with full sweeps
 every 8 steps (points, 95% flight-bootstrap CI); B / T / W: flights better / tied / worse; Holm p ≤ 0.007
 except (a), p = 0.09.*
 
-| Policy | Beams | ms | Full sweeps (%) | Top-1 (%) | In noise (%) | SE (%) | Δ top-1 [95% CI] | B / T / W |
-|---|---|---|---|---|---|---|---|---|
-| Full sweep every step | 64.0 | 5.00 | 100 | 100.00 | 100.00 | 96.51 | +2.85 [+1.82, +4.05] | 27 / 6 / 0 |
-| Tracker, full every 8 | 13.2 | 1.05 | 13.9 | 97.15 | 99.19 | 99.12 | reference | – |
-| Tracker, loss | 6.1 | 0.49 | 1.8 | 92.70 | 95.31 | 98.25 | −4.45 [−9.39, −1.07] | 2 / 18 / 13 |
-| Camera top-2 + T, loss | 6.5 | 0.52 | 1.8 | 97.82 | 99.49 | 99.55 | +0.67 [+0.36, +1.05] | 18 / 13 / 2 |
-| Camera top-4 + T, loss | 7.4 | 0.59 | 1.8 | 98.57 | 99.69 | 99.54 | +1.41 [+0.88, +2.05] | 23 / 9 / 1 |
-| Camera top-4, window only, loss (a) | 6.2 | 0.50 | 1.8 | 96.12 | 98.93 | 99.53 | −1.04 [−1.87, −0.25] | 9 / 4 / 20 |
-| GPS top-2 + T, loss | 6.5 | 0.52 | 1.8 | 98.63 | 99.79 | 99.61 | +1.48 [+0.92, +2.16] | 24 / 8 / 1 |
-| GPS top-4 + T, loss | 7.3 | 0.59 | 1.8 | 99.12 | **99.88** | 99.57 | +1.97 [+1.26, +2.75] | 25 / 7 / 1 |
-| Camera + GPS top-2 + T, loss | 6.3 | **0.51** | 1.8 | 98.67 | 99.82 | **99.62** | +1.51 [+0.93, +2.21] | 24 / 8 / 1 |
-| **Camera + GPS top-4 + T, loss** | **7.0** | **0.56** | 1.8 | **99.19** | **99.88** | 99.59 | **+2.04 [+1.26, +2.89]** | **25 / 7 / 1** |
+| Policy | Beams | ms | Top-1 (%) | Macro-F1 (all / ≥ 5) | In noise (%) | SE (%) | Δ top-1 [95% CI] | B / T / W |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Full sweep every step | 64.0 | 5.00 | 100.00 | 1.000 / 1.000 | 100.00 | 96.51 | +2.85 [+1.82, +4.05] | 27 / 6 / 0 |
+| Tracker, full every 8 | 13.2 | 1.05 | 97.15 | 0.843 / 0.934 | 99.19 | 99.12 | reference | – |
+| Tracker, loss | 6.1 | 0.49 | 92.70 | 0.708 / 0.845 | 95.31 | 98.25 | −4.45 [−9.39, −1.07] | 2 / 18 / 13 |
+| Camera top-2 + T, loss | 6.5 | 0.52 | 97.82 | 0.875 / 0.947 | 99.49 | 99.55 | +0.67 [+0.36, +1.05] | 18 / 13 / 2 |
+| Camera top-4 + T, loss | 7.4 | 0.59 | 98.57 | 0.914 / 0.961 | 99.69 | 99.54 | +1.41 [+0.88, +2.05] | 23 / 9 / 1 |
+| Camera top-4, window only, loss (a) | 6.2 | 0.50 | 96.12 | 0.780 / 0.883 | 98.93 | 99.53 | −1.04 [−1.87, −0.25] | 9 / 4 / 20 |
+| GPS top-2 + T, loss | 6.5 | 0.52 | 98.63 | 0.930 / 0.966 | 99.79 | 99.61 | +1.48 [+0.92, +2.16] | 24 / 8 / 1 |
+| GPS top-4 + T, loss | 7.3 | 0.59 | 99.12 | 0.943 / 0.979 | **99.88** | 99.57 | +1.97 [+1.26, +2.75] | 25 / 7 / 1 |
+| Camera + GPS top-2 + T, loss | 6.3 | **0.51** | 98.67 | 0.927 / 0.970 | 99.82 | **99.62** | +1.51 [+0.93, +2.21] | 24 / 8 / 1 |
+| **Camera + GPS top-4 + T, loss** | **7.0** | **0.56** | **99.19** | **0.944 / 0.980** | **99.88** | 99.59 | **+2.04 [+1.26, +2.89]** | **25 / 7 / 1** |
 
 ![Fig. 9](figures/fig_side_tracking.png)
 
@@ -713,7 +728,8 @@ beam-prediction studies on argmax-labelled data predict future beams under seque
 control recovers 0.55 dB at 2 bits and about 1 dB at 3–4 bits; a coupled element cannot reflect strongly
 at every phase, so a gap remains. The estimation side gains more (LMMSE removes the coupling bias), and
 the largest system-level effects are the RIS sizes needed for coverage: 2.25× the ideal element count at
-60 GHz, and a 32 cm panel at 140 GHz once D-band transceiver limits are included.
+60 GHz, and a 24–32 cm panel at 140 GHz once D-band transceiver limits are included, depending mainly
+on the receiver noise figure.
 
 **Learning where it helps.** On power sweeps alone the learned gain over persistence is modest at t + 1
 and clear at t + 3 (86.0% vs 78.1% within noise). In reduced beam training, the largest single gain
@@ -734,7 +750,8 @@ a larger model.
 **Limitations.** Saleh and coupling coefficients are literature values, not measurements of a 60 GHz
 PA or RIS; Table II bounds the effect of the coupling strength. The obliquity exponent is assumed. The physical-layer results are simulated; the
 beam-prediction results use power sweeps only except in Tables XI–XII; the UAV locator assumes a sky background
-and is checked by inspection, not against labelled positions, which Scenario 23 does not provide; the
+and is checked by inspection and against GPS direction, not against labelled positions, which Scenario 23
+does not provide (about 1% of frames are misdetected); the
 sensing-aided tracker assumes the UAV's GPS reaches the base station within one sweep interval; the UAV height channel's unit is not documented consistently. The all-class macro-F1 at t + 3 (0.929) is limited by beams
 seen only once; more flights, not a different model, are needed to estimate it reliably. The latency
 model uses standard 5G NR FR2 timing, not the testbed's own sweep timing. The Table VIII figures are
@@ -747,13 +764,14 @@ efficiency is reported at nominal SNRs because the dataset's powers are unitless
 
 We built a hardware-aware model of an RIS-assisted mmWave UAV link and used it, with real 60 GHz
 measurements, to evaluate beam management end to end. Hardware impairments cost 7.8 dB and 2.25× RIS
-elements at 60 GHz, and D-band transceiver limits push the 140 GHz panel to 32 cm; a position-parametric
+elements at 60 GHz, and D-band transceiver limits push the 140 GHz panel to 24–32 cm, depending on the receiver noise
+figure; a position-parametric
 estimator matches perfect channel knowledge with 64× fewer pilots;
 Kalman-based prediction preserves 99.3% of the array gain at 500 ms latency; and AI-assisted reduced beam
 training with a learned beam-tie graph selects the exact optimal beam 99.3% of the time given full-sweep
 history and 97.2–99.3% in a closed-loop replay of 33 flights, with 1.05–1.31 ms of beam training per
 decision instead of 5 ms; with candidates from the UAV's GPS and its position in the camera image it
-reaches 99.2% with 0.56 ms and no periodic sweeps. Deep sequence models trained on measured-only data did
+reaches 99.2% (macro-F1 0.98 over beams with at least five samples) with 0.56 ms and no periodic sweeps. Deep sequence models trained on measured-only data did
 not improve on the tie graph at equal budget. All reported metrics are evaluated under sequence-level cross-validation. UAV position raises pooled blind accuracy at a 0.4 s
 horizon by 1–4 points, a gain that is not significant across flights for the best model, and frozen
 generic camera features lower it. Future work will validate the camera locator against labelled UAV
@@ -821,15 +839,17 @@ efficiency," *Found. Trends Signal Process.*, vol. 11, no. 3–4, pp. 154–655,
 
 [19] A. K. Menon *et al.*, "Long-tail learning via logit adjustment," in *Proc. ICLR*, 2021.
 
-[20] A. S. H. Ahmed *et al.*, "A 140GHz power amplifier with 20.5dBm output power and 20.8% PAE in
-250-nm InP HBT technology," in *Proc. IEEE IMS*, 2020. **[VERIFY author list]**
+[20] A. S. H. Ahmed, M. Seo, A. A. Farid, M. Urteaga, J. F. Buckwalter, and M. J. W. Rodwell, "A 140GHz power amplifier with 20.5dBm output power and 20.8% PAE in
+250-nm InP HBT technology," in *Proc. IEEE/MTT-S Int. Microw. Symp. (IMS)*, Los Angeles, CA, USA, 2020,
+pp. 492–495.
 
-[21] **[VERIFY: cite a D-band (≈140 GHz) SiGe LNA with ≈10 dB noise figure; a 0.13 µm SiGe 5-stage
-amplifier with NF down to 10 dB was found but its full citation needs checking.]**
+[21] E. Turkmen, A. Burak, A. Guner, I. Kalyoncu, M. Kaynak, and Y. Gurbuz, "A SiGe HBT D-band LNA
+with Butterworth response and noise reduction technique," *IEEE Microw. Wireless Compon. Lett.*, vol. 28,
+no. 6, pp. 524–526, 2018, doi: 10.1109/LMWC.2018.2831450.
 
-[22] 3GPP TS 38.213, "NR; Physical layer procedures for control," Sec. 4.1 (SS/PBCH block candidate
-positions, case D: up to 64 SS/PBCH blocks per 5 ms half-frame at 120 kHz SCS). **[VERIFY: release
-and version; we could not confirm the latest version online.]**
+[22] 3GPP TS 38.213, "NR; Physical layer procedures for control," version 17.9.0, Release 17 (ETSI TS
+138 213 V17.9.0, 2024-04), clause 4.1 (candidate SS/PBCH blocks, case D: 64 blocks per 5 ms half-frame
+at 120 kHz SCS).
 
 [23] A. N. Angelopoulos and S. Bates, "Conformal prediction: A gentle introduction," *Found. Trends Mach.
 Learn.*, vol. 16, no. 4, pp. 494–591, 2023, doi: 10.1561/2200000101.
@@ -853,6 +873,8 @@ NeurIPS*, vol. 33, 2020.
 | Sec. VI-D, Table X, Fig. 6 | `closed_loop_learned_tracking.py` | `results/closed_loop_learned_tracking.json` |
 | Sec. VI-D, Table XI, Fig. 7 | `beam_prediction.py`, `beam_sequence_model.py` with the full Scenario 23 download and `SCENARIO23_FEATURES` = `power`, `auto` (GPS), `camera`, `gps+camera`, `uav_pixel` or `gps+uav_pixel`, each with `BEAM_RESULTS_DIR` set to its own folder | `results/power_only/`, `results/gps/`, `results/camera/`, `results/gps_camera/`, `results/uav_pixel/`, `results/gps_uav_pixel/` |
 | Sec. VI-D, Table XII | `camera_beam_prediction.py --extract --locate` (needs torchvision) | `results/camera_beam_prediction.json` |
+| Sec. VI-D, locator check | `camera_beam_prediction.py --validate` | `results/camera_locator_validation.json` |
+| Sec. VI-A, Table III (NF rows) | `run_physical_layer.py` (`ris_sizing_140ghz_nf_sensitivity`) | `results/physical_layer_metrics.json` |
 | Sec. VI-D, Table XIV, Fig. 9 | `closed_loop_side_tracking.py` (after `--locate`) | `results/closed_loop_side_tracking.json` |
 | Sec. VI-D, GPS-aided beam training | `BEAM_RESULTS_DIR=results/gps` with `beam_training_overhead.py`, `conformal_beam_training.py` | `results/gps/` |
 | Sec. VI-D, Table XIII, Fig. 8 | `significance_tests.py` (after the runs above and `closed_loop_beam_tracking.py`) | `results/significance_tests.json` |

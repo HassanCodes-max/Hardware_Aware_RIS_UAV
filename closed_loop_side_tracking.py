@@ -28,7 +28,10 @@ import json
 
 import numpy as np
 import pandas as pd
+from collections import defaultdict
+
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import f1_score
 from sklearn.model_selection import GroupKFold
 
 from beam_prediction import BEAMS, DATA_DIR, FOLDS, RESULTS_DIR, SEED, load_scenario23
@@ -92,6 +95,7 @@ def main() -> None:
         previous[index[1:]] = index[:-1]
 
     flight_rows = []
+    decisions = defaultdict(lambda: ([], []))   # policy -> (best beams, chosen beams), all steps
     for train, test in GroupKFold(n_splits=FOLDS).split(power, groups=sequences):
         graph = tie_graph(power[train])
         rankings = {name: side_rankings(f, labels, sequences, previous, train)
@@ -105,9 +109,13 @@ def main() -> None:
             for policy in REFERENCE_POLICIES + [GENIE]:
                 trace = run_flight(flight_power, policy, graph)
                 flight_rows.append(flight_record(policy, int(sequence), flight_power, flight_time, trace))
+                decisions[policy.name][0].append(flight_power.argmax(axis=1))
+                decisions[policy.name][1].append(trace["chosen"])
             for name, policies in SIDE_POLICIES.items():
                 for policy in policies:
                     trace = run_flight(flight_power, policy, graph, rankings[name][index])
+                    decisions[policy.name][0].append(flight_power.argmax(axis=1))
+                    decisions[policy.name][1].append(trace["chosen"])
                     flight_rows.append(flight_record(policy, int(sequence), flight_power, flight_time,
                                                      trace))
             print(f"flight {sequence} done")
@@ -115,6 +123,16 @@ def main() -> None:
     flights = pd.DataFrame(flight_rows)
     flights["se_10dB"] = flights["se_10dB_sum"] / flights["intervals"]
     summary = summarise_flights(flights.drop(columns="se_10dB"))
+
+    # Exact-label macro-F1 over all decisions of each policy: all classes, and classes
+    # (best beams) with at least five steps, as for the open-loop study.
+    for policy, (best, chosen) in decisions.items():
+        best, chosen = np.concatenate(best), np.concatenate(chosen)
+        counts = np.bincount(best, minlength=BEAMS)
+        summary.loc[policy, "macro_f1"] = f1_score(best, chosen, average="macro", zero_division=0)
+        summary.loc[policy, "macro_f1_support_ge5"] = f1_score(
+            best, chosen, labels=np.flatnonzero(counts >= 5), average="macro", zero_division=0)
+        summary.loc[policy, "classes"] = int((counts > 0).sum())
 
     # Per-flight tests against the tie-graph tracker.
     rng = np.random.default_rng(7)
@@ -148,7 +166,7 @@ def main() -> None:
     }, indent=2))
 
     pd.set_option("display.width", 250)
-    columns = ["exact_top1", "within_noise", "beams_mean", "latency_ms_mean", "latency_ms_p95_worst_flight",
+    columns = ["exact_top1", "macro_f1", "macro_f1_support_ge5", "within_noise", "beams_mean", "latency_ms_mean", "latency_ms_p95_worst_flight",
                "full_sweep_fraction", "se_10dB_pct_of_genie"]
     print(summary[columns].round(4).to_string())
     print(tests.round(4).to_string())
