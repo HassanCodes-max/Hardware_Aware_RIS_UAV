@@ -587,9 +587,10 @@ the UAV's GPS position, speed, velocity components, height, pitch and roll. We c
 east/north offsets from the base station and its bearing, append these and the raw kinematic channels
 to every step of each model's input window, and repeat the blind-prediction study with the same folds.
 All other tables use power sweeps only, so that they can be reproduced from the beam CSV shipped with
-the repository. The height channel ranges from 31 to 391 while the UAV–BS distance is at most 120 m, so
-its unit or reference is not documented consistently; the models standardise it, but we do not
-interpret it physically.
+the repository. The altitude and height channels are in feet, not metres: altitude minus height is the
+same 1175.8 ft for every sample, the ground elevation at the base station (West Chandler, AZ), so we
+convert both to metres. The UAV then flies 9.6–119 m above its take-off point, consistent with the
+120 m range of the dataset, and its elevation seen from the base station is 46–90° (median 77°).
 
 The base station also records one 960 × 540 camera frame per sweep, looking up at the sky; the UAV
 appears as a dark blob of a few pixels, often next to a sun-glare streak. We use the frames in two ways.
@@ -602,14 +603,17 @@ the UAV. Its pixel (x, y) and contrast form a three-number feature. In 95% of fr
 29 grey levels darker than the surrounding sky; inspected frames show the detection on the UAV body,
 also next to the glare and when the UAV is close. We also check the locator against GPS, without labels:
 a quadratic map from pixel to the UAV's east/north offset, fitted on other flights, explains 67% of the
-east and 12% of the north variance (median error 4.4 m). The UAV is nearly overhead (elevation 71–90°)
-and its height is not recorded consistently, so a pixel fixes the direction but not the distance; in
-the frames with the largest disagreement the detection is visibly on the UAV. The pixel jumps by more
-than 100 px between consecutive frames in 1.8% of frame pairs, while the GPS moves at most 2.2 m (99th
-percentile), so about 1% of frames are misdetected. The locator takes 54 ms per frame on one CPU process,
-most of it JPEG decoding; the ResNet-18 encoder takes 108 ms on one thread.
+east and 12% of the north variance (median error 4.5 m). The UAV is high above the camera (elevation
+46–90°), so a pixel fixes the direction but not the distance, which also depends on the 9.6–119 m
+height; in the frames with the largest disagreement the detection is visibly on the UAV. The raw pixel
+jumps by more than 100 px between consecutive frames in 1.8% of frame pairs, while the GPS moves at most
+2.2 m (99th percentile), so about 1% of frames are misdetected. A causal gate removes half of these
+jumps: a detection more than 100 px from the last accepted one is replaced by that position until two
+consecutive detections agree on the new place. The gate holds 1.4% of frames and leaves 0.95% of frame
+pairs with a jump above 100 px; all results below use the gated pixel. The locator takes 54 ms per frame
+on one CPU process, most of it JPEG decoding; the ResNet-18 encoder takes 108 ms on one thread.
 
-Alone, the UAV pixel identifies the current beam within noise 81.1% of the time (59.0% exact), against
+Alone, the UAV pixel identifies the current beam within noise 80.4% of the time (58.5% exact), against
 67.4% for the generic embedding and 14.9% for the most frequent beam (Table XII), so localising the UAV
 is what turns the image into beam information. For blind prediction from power sweeps, however, no side
 information gives a significant gain (Table XI, Table XIII). Position helps most further ahead: at t + 3,
@@ -649,11 +653,11 @@ sequences).*
 | t+0 | None, most frequent beam | 14.9 | 13.0 | 39.6 | 7.6 | 0.00 |
 | t+0 | Embedding, logistic regression | 63.3 | 62.7 | 70.9 | 40.2 | 0.23 |
 | t+0 | Embedding, MLP | 67.4 | **66.5** | 74.6 | 42.3 | 0.25 |
-| t+0 | UAV pixel, random forest | **81.1** | 65.7 | **82.7** | **59.0** | **0.27** |
+| t+0 | UAV pixel, random forest | **80.4** | 65.1 | **82.8** | **58.5** | **0.27** |
 | t+1 | Embedding, MLP | 57.3 | 53.8 | 66.2 | 33.2 | 0.16 |
-| t+1 | UAV pixel, random forest | **71.9** | **56.7** | **78.2** | **49.9** | **0.19** |
+| t+1 | UAV pixel, random forest | **72.4** | **57.4** | **77.8** | **50.7** | **0.19** |
 | t+3 | Embedding, MLP | 43.2 | 36.4 | 53.7 | 24.9 | 0.09 |
-| t+3 | UAV pixel, random forest | **56.5** | **42.0** | **65.4** | **36.9** | **0.11** |
+| t+3 | UAV pixel, random forest | **56.9** | **43.1** | **65.9** | **37.2** | **0.11** |
 
 ![Fig. 8](figures/fig_side_information.png)
 
@@ -661,12 +665,13 @@ sequences).*
 has its own marker shape.*
 
 **Position-aided beam training.** Rerunning the reduced beam training and conformal studies on the
-GPS-aided GRU ensemble changes little. At t + 3 the two-round scheme reaches 99.3% exact top-1 [98.7,
-99.8] and all-class macro-F1 0.946 [0.923, 0.978] (power only: 99.1% and 0.929), but measures 14.5
-instead of 11.7 beams (2.15 vs 1.93 ms); the intervals overlap. At t + 1 every operating point stays
-within 0.3 points. The 95% conformal shortlist at t + 3 uses 5.2 instead of 5.4 beams and its worst fold
-rises from 92.7 to 94.1% coverage. Position therefore does not remove the singleton-class limit on
-all-class macro-F1 at t + 3.
+GPS-aided GRU ensemble changes little. At t + 3 the two-round scheme reaches 99.2% exact top-1 [98.5,
+99.7] and all-class macro-F1 0.931 [0.896, 0.962] (power only: 99.1% and 0.929), but measures 15.5
+instead of 11.7 beams (2.23 vs 1.93 ms); fused with the last sweep it reaches 99.4% [98.9, 99.7] and
+0.955 [0.936, 0.981] with 13.8 beams (power only: 99.3% and 0.913 with 13.3). All intervals overlap. At
+t + 1 every operating point stays within 0.3 points. The 95% conformal shortlist at t + 3 uses 5.2
+instead of 5.4 beams and its worst fold rises from 92.7 to 94.3% coverage. Position raises all-class
+macro-F1 at t + 3, but its lower confidence bound stays below 0.95: the singleton classes remain.
 
 **Significance** (Table XIII, Fig. 9). Across the 33 replayed flights, the tie-graph tracker (four
 partners, full sweep every 8 steps) loses 2.8 points of exact top-1 against a full sweep every step on
