@@ -66,7 +66,7 @@ are nearly identical, so random splits leak.
 4. On real 60 GHz measurements, a proof that exact blind beam prediction is noise-limited, a GRU trained
    on a soft power target, a learned beam-tie graph, and an AI-assisted reduced beam training scheme
    meeting ≥ 95% exact top-1 and macro-F1, conformal shortlists calibrated to a target accuracy, a
-   closed-loop replay of every flight in which the system knows only what it measured, and a matched-budget
+   closed-loop replay of every multi-sweep flight in which the system knows only what it measured, and a matched-budget
    comparison of ten deep sequence models against the tie graph in that loop, evaluated with
    sequence-level cross-validation and bootstrap confidence intervals (Sec. V, VI-D).
 
@@ -254,7 +254,7 @@ exchangeability behind the guarantee holds only approximately; we report the cov
 fold.
 
 **Closed-loop replay.** The schemes above build each shortlist from full sweeps of earlier steps, which
-a system measuring only K beams per step never has. We therefore replay every flight step by step with
+a system measuring only K beams per step never has. We therefore replay every flight with more than one sweep (33 of 35) step by step with
 policies that know only the beams they measured: the current beam, its ±1 index neighbours and its M
 strongest tie-graph partners (fitted on other folds' flights), with a full sweep every N steps or only
 on beam loss (best measured power more than 3 dB below the current beam's last value). The effective
@@ -410,7 +410,7 @@ the best model on every metric at both horizons, including blind macro-F1 at t +
 | t+1 | RF + sweep prior | 93.7 | 86.7 | 94.9 | 98.6 | 70.4 | 0.41 |
 | t+1 | GRU, hard label | 93.7 | 82.3 | 94.6 | 98.6 | 70.9 | 0.41 |
 | t+1 | GRU, soft target | 95.6 | 89.3 | 95.1 | 98.9 | 70.9 | 0.45 |
-| t+1 | **GRU ensemble, augmented** | **96.4** | **91.7** | **96.1** | **99.1** | **72.1** | **0.49** |
+| t+1 | **GRU ensemble, augmented** | **96.4** | **91.7** | **96.1** | **99.1** | **72.1** | **0.48** |
 | t+3 | Persistence | 78.1 | 66.1 | 80.3 | 93.7 | 53.3 | 0.26 |
 | t+3 | GRU, hard label | 73.2 | 57.9 | 80.6 | 93.1 | 49.5 | 0.21 |
 | t+3 | GRU, soft target | 81.1 | 65.8 | 84.8 | 95.5 | 55.3 | 0.24 |
@@ -476,7 +476,7 @@ noise at 1.05 ms. At the testbed's 142 ms step a full sweep takes only 3.5% of t
 spectral efficiency rises modestly, from 96.5% of the genie to 99.0–99.2%; the main gain is the 5× lower
 beam-training latency per decision.
 
-*Table IX. Closed-loop replay of all 35 flights (each policy knows only what it measured). Latency:
+*Table IX. Closed-loop replay of the 33 flights with more than one sweep (flights 22 and 30 hold a single sweep) (each policy knows only what it measured). Latency:
 mean beam-training time per decision. SE: effective spectral efficiency as % of a genie that always
 uses the best beam with no training time, at nominal best-beam SNR of 0 / 10 / 20 dB.*
 
@@ -586,8 +586,8 @@ imbalance [19] lowered every metric because the beam distribution differs betwee
 
 **Limitations.** Saleh and coupling coefficients are literature values, not measurements of a 60 GHz
 PA or RIS; Table II bounds the effect of the coupling strength. The obliquity exponent is assumed. The physical-layer results are simulated; the
-beam-prediction results use power sweeps only except in Table XI, where UAV position adds 1–4 points
-at t + 3; the UAV height channel's unit is not documented consistently. The all-class macro-F1 at t + 3 (0.929) is limited by beams
+beam-prediction results use power sweeps only except in Table XI, where UAV position raises pooled
+within-noise accuracy at t + 3 by 1–4 points but not significantly per flight for the GRU ensemble; the UAV height channel's unit is not documented consistently. The all-class macro-F1 at t + 3 (0.929) is limited by beams
 seen only once; more flights, not a different model, are needed to estimate it reliably. The latency
 model uses standard 5G NR FR2 timing, not the testbed's own sweep timing. The Table VIII figures are
 open-loop (they assume full-sweep history); Table IX gives the closed-loop figures. Effective spectral
@@ -603,10 +603,10 @@ elements at 60 GHz, and D-band transceiver limits push the 140 GHz panel to 32 c
 estimator matches perfect channel knowledge with 64× fewer pilots;
 Kalman-based prediction preserves 99.3% of the array gain at 500 ms latency; and AI-assisted reduced beam
 training with a learned beam-tie graph selects the exact optimal beam 99.3% of the time given full-sweep
-history and 97.2–99.3% in a closed-loop replay of every flight, with 1.05–1.31 ms of beam training per
+history and 97.2–99.3% in a closed-loop replay of 33 flights, with 1.05–1.31 ms of beam training per
 decision instead of 5 ms; deep sequence models trained on measured-only data did not improve on it at
-equal budget. All reported metrics are evaluated under sequence-level cross-validation. UAV position improves blind prediction at a 0.4 s
-horizon by 1–4 points. Future work will add camera input to beam prediction, measured hardware
+equal budget. All reported metrics are evaluated under sequence-level cross-validation. UAV position raises pooled blind accuracy at a 0.4 s
+horizon by 1–4 points, a gain that is not significant across flights for the best model. Future work will add camera input to beam prediction, measured hardware
 coefficients, and paired per-flight significance tests between tracking policies.
 
 ---

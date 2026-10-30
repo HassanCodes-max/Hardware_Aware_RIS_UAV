@@ -74,7 +74,7 @@ as much as common ones (the role macro-F1 plays for exact labels).
 | t+1 (~140 ms) | Persistence | 93.6% | 86.3% | 94.5% | 91.4% | 98.6% | *69.2%* | *0.45* |
 | | RF + sweep prior | 93.7% | 86.7% | 94.9% | 89.6% | 98.6% | *70.4%* | *0.41* |
 | | GRU, soft target | 95.6% | 89.3% | 95.1% | 91.5% | 98.9% | *70.9%* | *0.45* |
-| | **GRU ensemble, augmented** | **96.4%** | **91.7%** | **96.1%** | **93.4%** | **99.1%** | *72.1%* | *0.49* |
+| | **GRU ensemble, augmented** | **96.4%** | **91.7%** | **96.1%** | **93.4%** | **99.1%** | *72.1%* | *0.48* |
 | t+3 (~0.4 s) | Persistence | 78.1% | 66.1% | 80.3% | 76.7% | 93.7% | *53.3%* | *0.26* |
 | | RF + sweep prior | 78.5% | 63.0% | 84.2% | 75.3% | 94.4% | *53.9%* | *0.21* |
 | | GRU, soft target | 81.1% | 65.8% | 84.8% | 78.1% | 95.5% | *55.3%* | *0.24* |
@@ -358,8 +358,9 @@ GPS alone can't steer a 32×32 RIS: 5 m of error is wider than the beam.
 
 - Full download wired in (git-ignored). Raw mmWave files match the beam
   CSV (max difference 3e-8).
-- GPS adds 1.1–4.2 within-noise points at t+3, nothing at t+1 (paper
-  Table XI, Fig. 7). `SCENARIO23_FEATURES=power` keeps the power-only
+- GPS adds 1.1–4.2 pooled within-noise points at t+3, nothing at t+1 (paper
+  Table XI, Fig. 7); per flight the GRU-ensemble gain is not significant
+  (+1.1 points, 95% CI -0.1 to +2.3, Wilcoxon p = 0.34). `SCENARIO23_FEATURES=power` keeps the power-only
   pipeline reproducible.
 
 ### 2026-10-30: Major update 11 (learned models in the loop, paper v3 figures)
