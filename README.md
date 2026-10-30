@@ -38,6 +38,7 @@ python -m pytest tests          # 24 regression tests, about 10 s
 | `closed_loop_beam_tracking.py` | Replays every flight with policies that know only the beams they measured (window + learned tie partners, periodic or loss-triggered full sweeps); exact top-1, latency, effective spectral efficiency | `closed_loop_beam_tracking.{json,csv}`, `*_flights.csv` | ~1 min |
 | `camera_beam_prediction.py` | Encodes every BS camera frame with a frozen ImageNet ResNet-18 (`--extract`, cached locally), then predicts the beam from the camera alone. `SCENARIO23_FEATURES=camera` / `gps+camera` feeds a 16-d PCA of it to the two prediction scripts | `camera_beam_prediction.json` | ~25 min extract (CPU), ~2 min study |
 | `closed_loop_side_tracking.py` | Closed loop with camera (UAV pixel) and GPS candidates per step and loss-triggered sweeps; per-flight tests against the tie-graph tracker | `closed_loop_side_tracking.{json,csv}`, `*_flights.csv` | ~10 min |
+| `blind_prediction_analysis.py` | Splits blind exact top-1 into decisive samples (best beam leads by > 0.25 dB, 25%) and near-ties (75%); fused GRU + last-sweep predictor, nested over flights | `blind_prediction_analysis.json` | ~1 min |
 | `significance_tests.py` | Paired per-flight tests (flight bootstrap CI, Wilcoxon, Holm) for closed-loop policies and for each side-information run | `significance_tests.{json,csv}` | ~10 s |
 | `tracking_eval.py` | Position predictors (persistence, CV, Kalman, learned) scored by delivered array gain at 10/100/500 ms horizons | `tracking_metrics.{json,csv}` | ~1 min |
 | `main.py` | Per-time-step trace along the default flight | `simulation.csv` | ~4 s |
@@ -65,6 +66,14 @@ python -m pytest tests          # 24 regression tests, about 10 s
 ## Current results (2026-10-29)
 
 **Beam prediction** (Scenario 23, GroupKFold over 35 sequences, power sweeps only, no GPS yet)
+
+Why blind exact top-1 looks low: in 75% of sweeps two or more beams are
+equal within the 0.25 dB noise, so the "exact" label is a coin toss among
+them (a non-causal oracle reaches only 79.0%). On the 25% of samples where
+the label is decisive, the GRU ensemble predicts the exact beam **94.1%**
+of the time at t+1 (95% CI 91.7-95.9) and 78.7% at t+3
+(`blind_prediction_analysis.py`, paper Table VII). Fusing it with the last
+sweep adds +0.3 / +0.6 points of exact top-1 (72.4% / 57.3%).
 
 "Within noise" means the chosen beam is within 0.25 dB of the best beam.
 That is the testbed's own noise floor: the same beam's power changes by a
