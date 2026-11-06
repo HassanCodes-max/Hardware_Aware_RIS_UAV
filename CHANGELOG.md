@@ -67,6 +67,17 @@ Major updates to the research code, results and paper, newest first within each 
   from the prior's angular uncertainty and the predicted SNR. The margin
   (128) was chosen on separate seeds from the reported runs.
 
+### 2026-11-06: Major update 19 (final paper for review)
+
+- Authors: Maavia Khalid and Hassan Ali.
+- Abstract cut from 436 to 250 words (IEEE limit); every headline number kept.
+- AUDIT.md: M1 (sub-THz wording) and M10 (references) marked fixed; both
+  were already resolved in the paper.
+- Removed `Research-paper.docx`, the superseded first draft (template
+  author placeholders, results invalidated by the audit); it stays in git
+  history.
+- `paper/revised_paper_ieee.docx` rebuilt (16 pages, IEEE two-column).
+
 ### 2026-10-30: Major update 18 (proofread, stack-vs-stack test)
 
 - `significance_tests.py`: new "stacking" family (stacks vs the GRU ensemble

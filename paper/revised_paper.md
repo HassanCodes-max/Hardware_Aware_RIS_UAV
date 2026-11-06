@@ -4,39 +4,28 @@
 section "Reproducing this paper" at the end maps each table and figure to its script. All references
 have been checked against their publishers' records.*
 
-**Maavia**, Department of Computer Science, Institute of Space Technology (IST), Islamabad, Pakistan
+**Maavia Khalid and Hassan Ali**, Department of Computer Science, Institute of Space Technology (IST), Islamabad, Pakistan
 
 ---
 
 ## Abstract
 
 Millimetre-wave (mmWave) and sub-terahertz links can give unmanned aerial vehicles (UAVs) multi-gigabit
-connectivity, but narrow beams, high path loss and UAV mobility make beam management costly, and
-practical hardware departs from the ideal models most reconfigurable intelligent surface (RIS) studies
-assume. We present a hardware-aware framework for an RIS-assisted 60 GHz UAV link that models
-transmitter power-amplifier (PA) distortion through the Bussgang decomposition, RIS phase quantization,
-phase noise, amplitude–phase coupling and antenna mismatch, together with ITU-R P.676-13 gaseous
-absorption. On this model we show that (i) impairments cost 7.8 dB of SNDR, dominated by amplitude–phase
-coupling, so a realistic RIS needs about 2.25× more elements than an ideal one for full coverage of a
-300 m flight; (ii) a position-parametric channel estimator reaches within 0.15 dB of perfect channel
-knowledge with 64× fewer pilots than per-element LMMSE, and needs no pilots when a 100 ms Kalman
-prediction is available; and (iii) predictive tracking delivers 99.3% of the ideal array gain at 500 ms
-latency, whereas persistence delivers 63%. On real 60 GHz measurements (DeepSense 6G Scenario 23) we
-show that exact blind beam prediction is bounded at 79% top-1 by measurement noise, and propose an
-AI-assisted reduced beam training scheme with a learned beam-tie graph. Given full-sweep history it
-selects the exact optimal beam 99.3% of the time at a 140 ms horizon (macro-F1 0.961 over all 56 beam
-classes) and 99.1% at 0.4 s. Replayed in closed loop, where the system knows only the beams it measured,
-tie-graph tracking selects the exact optimal beam 97.2–99.3% of the time with 1.05–1.31 ms of beam
-training per decision instead of 5 ms, and per-flight tests confirm its spectral-efficiency gain over full
-sweeps on 32 of 33 flights. Adding candidate beams from the UAV's GPS and from its position in the base
-station's camera image, located without labels, lets the tracker drop periodic full sweeps: with six
-candidates it selects the exact optimal beam 99.5% of the time with macro-F1 0.97 over all 56 beam
-classes and 0.66 ms per decision, better than the tie-graph tracker on 26 of 33 flights, and it degrades
-gracefully when the GPS report is up to 1.1 s old. Ten deep sequence models trained on measured-only
-data do not beat the tie graph at equal measurement budget. For blind prediction, no single model gains
-significantly from position or camera features, but a nested stack of all models raises exact top-1
-from 72.1 to 75.6% at 140 ms, 96% of the noise bound, and from 56.7 to 64.3% at 0.4 s, on most flights
-(Holm p ≤ 0.003). All results use sequence-level cross-validation.
+connectivity, but narrow beams, high path loss and UAV mobility make beam management costly. We present a
+hardware-aware framework for a 60 GHz UAV link assisted by a reconfigurable intelligent surface (RIS)
+that models transmitter
+power-amplifier distortion, RIS phase quantization, phase noise, amplitude–phase coupling and antenna
+mismatch, together with ITU-R P.676-13 gaseous absorption. Impairments cost 7.8 dB of SNDR, mostly from
+amplitude–phase coupling, so a realistic RIS needs about 2.25× more elements than an ideal one. A
+position-parametric channel estimator comes within 0.15 dB of perfect channel knowledge with 64× fewer
+pilots than per-element LMMSE, and predictive tracking keeps 99.3% of the ideal array gain at 500 ms
+latency, against 63% for persistence. On real 60 GHz measurements (DeepSense 6G Scenario 23), we show that
+exact blind beam prediction is bounded at 79% top-1 by measurement noise, and propose AI-assisted reduced
+beam training with a learned beam-tie graph. In a closed-loop replay of 33 flights, where the system knows
+only the beams it measured, candidate beams from the UAV's GPS and from its position in the base station's
+camera image, located without labels, let the tracker select the exact optimal beam 99.5% of the time,
+with macro-F1 0.97 over all 56 beam classes and 0.66 ms of beam training per decision instead of 5 ms.
+Ten deep sequence models do not beat the tie graph at equal measurement budget. All results use sequence-level cross-validation and per-flight significance tests.
 
 **Index Terms**: mmWave, sub-THz, UAV, reconfigurable intelligent surface, beam training, beam
 tracking, channel estimation, hardware impairments, deep learning.
