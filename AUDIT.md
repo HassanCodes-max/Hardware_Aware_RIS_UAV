@@ -187,7 +187,7 @@ C3 makes the argument moot anyway.
 
 | # | Issue | Status |
 |---|---|---|
-| M1 | 60 GHz is mmWave. "Sub-THz" usually means 100–300 GHz, but the title and abstract claim sub-THz while the main results are at 60 GHz. | Paper wording: open |
+| M1 | 60 GHz is mmWave. "Sub-THz" usually means 100–300 GHz, but the title and abstract claim sub-THz while the main results are at 60 GHz. | Fixed: the revised title and results say mmWave; sub-THz is used only for the 140 GHz study |
 | M2 | A 286 MB `scenario23_beam_model.pkl` was committed through LFS, and it can be regenerated. | Untracked, added to `.gitignore` (local file kept) |
 | M3 | `requirements.txt` listed only numpy. | Fixed |
 | M4 | README was outdated (it said "circular trajectory" and was missing half the files). | Rewritten |
@@ -196,7 +196,7 @@ C3 makes the argument moot anyway.
 | M7 | Noise was hard-coded to 1e-12 W. | Now kTB·NF (−87 dBm at 100 MHz, NF 7 dB) |
 | M8 | The ITU-R P.676 sum ran 128× per time step in Python loops. | Cached once per config; channel vectorised |
 | M9 | The abstract says BER and channel-estimation error are evaluated, but they were future work. | Implemented: BER (QPSK/16-QAM vs SNDR), LS/LMMSE NMSE |
-| M10 | Ref. [7] has no authors; ref. [2] has no volume or pages. | Paper: open |
+| M10 | Ref. [7] has no authors; ref. [2] has no volume or pages. | Fixed: all references checked against publishers' records (2026-10-30) |
 | M11 | Legacy beam scripts duplicated the same split and model code. | Moved to `legacy/` |
 
 ### Verified correct (no change needed)
